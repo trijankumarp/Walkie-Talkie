@@ -218,21 +218,49 @@ function getNetworkHint() {
   return `Network type: ${t}${conn.effectiveType ? ` (${conn.effectiveType})` : ""}`;
 }
 
-function scanWiFi() {
+async function scanWiFi() {
   const list = document.getElementById("wifiList");
   const activeCh = channels.find((c) => c.id === currentChannel);
   const channelName = activeCh ? activeCh.name : "Channel 1 - Team A";
 
+  if (window.windowsAPI?.scanWifiNetworks) {
+    list.innerHTML = `<div class="item">Scanning WiFi networks (Windows)...</div>`;
+    try {
+      const result = await window.windowsAPI.scanWifiNetworks();
+      if (result.ok && result.networks.length) {
+        const connected = result.connected
+          ? `<div class="item ok">Connected: <strong>${result.connected}</strong></div>`
+          : "";
+        const items = result.networks
+          .map((n) => `<div class="item ok">📶 ${n}</div>`)
+          .join("");
+        list.innerHTML = `
+          <div class="info-banner"><strong style="color:#00ff88;">Windows app</strong> — real WiFi scan</div>
+          ${connected}
+          ${items}
+          <div class="item ok">Team channel: <span style="color:#00ff88">${channelName}</span></div>
+        `;
+        document.getElementById("connStatus").innerHTML = result.connected
+          ? `WiFi: ${result.connected} · Channel «${channelName}»`
+          : `Found ${result.networks.length} networks · «${channelName}»`;
+        document.getElementById("connStatus").style.color = "#00ff88";
+        return;
+      }
+      list.innerHTML = `<div class="item warn">${result.message || "No WiFi networks found. Turn on WiFi."}</div>`;
+    } catch (err) {
+      list.innerHTML = `<div class="item warn">Scan error: ${err.message}</div>`;
+    }
+  }
+
   list.innerHTML = `
     <div class="info-banner">
-      <strong style="color:#00ff88;">Not broken</strong> — Chrome/Safari block WiFi device scan in web apps.
-      Real walkie apps (native) can scan; browser apps cannot.
+      <strong style="color:#00ff88;">Browser mode</strong> — WiFi scan blocked by browser.
+      Use the <strong>Windows app</strong> (<code>npm run windows</code>) for real scan.
     </div>
     <div class="item ok">${getNetworkHint()}</div>
-    <div class="item ok"><strong>Step 1:</strong> All phones connect to the <strong>same WiFi</strong> (or mobile hotspot).</div>
-    <div class="item ok"><strong>Step 2:</strong> Everyone picks the <strong>same channel</strong> below: <span style="color:#00ff88">${channelName}</span></div>
-    <div class="item ok"><strong>Step 3:</strong> Press PTT to talk (demo UI — voice needs native app or WebRTC upgrade).</div>
-    <div class="item warn"><strong>Bluetooth:</strong> Use button 1 on <strong>Chrome Android</strong> to pair nearby devices.</div>
+    <div class="item ok"><strong>Step 1:</strong> All devices on the <strong>same WiFi</strong>.</div>
+    <div class="item ok"><strong>Step 2:</strong> Same channel: <span style="color:#00ff88">${channelName}</span></div>
+    <div class="item warn"><strong>Bluetooth:</strong> Button 1 — Chrome Android or Windows app.</div>
   `;
 
   document.getElementById("connStatus").innerHTML =
@@ -281,6 +309,13 @@ async function logout() {
 function boot() {
   if (!window.mosAuth?.isConfigured()) {
     setAuthError("Add Firebase keys in firebase-config.js to enable real login.");
+  }
+
+  if (window.windowsAPI?.isDesktop) {
+    const status = document.getElementById("status");
+    if (status && !isLoggedIn) {
+      status.innerHTML = "Windows app · Ready to login";
+    }
   }
 
   document.addEventListener("keydown", (e) => {

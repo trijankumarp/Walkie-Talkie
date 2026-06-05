@@ -1,4 +1,5 @@
 node_modules/
+dist/
 
 # Firebase secrets (use firebase-config.example.js in repo)
 firebase-config.js

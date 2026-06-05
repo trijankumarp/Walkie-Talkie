@@ -2,13 +2,46 @@
   "name": "walkie-talkie",
   "version": "1.0.0",
   "private": true,
-  "description": "M-OS Walkie Talkie PWA — Firebase auth, Vercel deploy",
+  "description": "M-OS Walkie Talkie — Web, Vercel, and Windows desktop",
+  "main": "electron/main.js",
   "scripts": {
     "build": "node scripts/generate-firebase-config.js",
     "dev": "npm run build && python -m http.server 8080",
-    "start": "python -m http.server 8080"
+    "start": "python -m http.server 8080",
+    "windows": "npm run build && electron .",
+    "windows:pack": "npm run build && electron-builder --win --x64"
   },
   "dependencies": {
     "firebase": "^12.14.0"
+  },
+  "devDependencies": {
+    "electron": "^35.1.2",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.mos.walkietalkie",
+    "productName": "Walkie Talkie",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "walkie.html",
+      "index.html",
+      "auth.js",
+      "app.js",
+      "manifest.json",
+      "firebase-config.js",
+      "firebase-config.deploy.js",
+      "firebase-config.example.js",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": ["nsis"],
+      "artifactName": "Walkie-Talkie-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

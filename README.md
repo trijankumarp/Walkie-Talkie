@@ -18,10 +18,31 @@ C:\Users\trija\Desktop\Work\VS\Walkie-Talkie
 
 ---
 
-## Run locally
+## Windows app (desktop)
 
 ```powershell
 cd "C:\Users\trija\Desktop\Work\VS\Walkie-Talkie"
+npm install
+npm run windows
+```
+
+- Real **WiFi network scan** (Windows `netsh`)
+- Same login (Firebase) as web
+- Bluetooth via Web Bluetooth in Electron
+
+**Installer (.exe):**
+
+```powershell
+npm run windows:pack
+```
+
+Output: `dist/Walkie-Talkie-Setup-1.0.0.exe`
+
+---
+
+## Run in browser (local)
+
+```powershell
 npm run build
 npm start
 ```
