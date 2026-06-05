@@ -3,6 +3,7 @@ const THEME_KEY = "walkie_theme_v1";
 const BT_DEVICES_KEY = "walkie_bt_devices_v1";
 const WIFI_SEL_KEY = "walkie_wifi_selected_v1";
 const PROFILE_MOBILE_KEY = "walkie_profile_mobile_v1";
+const FRIENDS_KEY = "walkie_friends_v1";
 
 let isLoggedIn = false;
 let wifiConnectedName = null;
@@ -15,6 +16,10 @@ let loggedInUser = null;
 let btPanelOpen = false;
 let wifiPanelOpen = false;
 let profilePanelOpen = false;
+let friendPanelOpen = false;
+let connectPanelOpen = false;
+let teamPanelOpen = false;
+let friends = [];
 let selectedBtId = null;
 let savedBtDevices = [];
 
@@ -87,7 +92,37 @@ function setConnectPanels(btOpen, wifiOpen) {
   document.getElementById("wifiPanel")?.classList.toggle("open", wifiOpen);
 }
 
+function ensureConnectPanelOpen() {
+  if (!connectPanelOpen) {
+    connectPanelOpen = true;
+    document.getElementById("btnConnectAction")?.classList.add("selected");
+    document.getElementById("connectPanel")?.classList.add("open");
+  }
+}
+
+function toggleConnectPanel() {
+  connectPanelOpen = !connectPanelOpen;
+  document.getElementById("btnConnectAction")?.classList.toggle("selected", connectPanelOpen);
+  document.getElementById("connectPanel")?.classList.toggle("open", connectPanelOpen);
+  if (!connectPanelOpen) setConnectPanels(false, false);
+}
+
+function toggleTeamPanel() {
+  teamPanelOpen = !teamPanelOpen;
+  document.getElementById("btnTeamAction")?.classList.toggle("selected", teamPanelOpen);
+  document.getElementById("teamPanel")?.classList.toggle("open", teamPanelOpen);
+  if (teamPanelOpen) renderChannels();
+}
+
+function toggleFriendPanel() {
+  friendPanelOpen = !friendPanelOpen;
+  document.getElementById("btnFriendAction")?.classList.toggle("selected", friendPanelOpen);
+  document.getElementById("friendPanel")?.classList.toggle("open", friendPanelOpen);
+  if (friendPanelOpen) renderFriends();
+}
+
 function toggleBluetoothPanel(forceOpen) {
+  ensureConnectPanelOpen();
   const next = forceOpen === true ? true : forceOpen === false ? false : !btPanelOpen;
   if (next) {
     setConnectPanels(true, false);
@@ -98,6 +133,7 @@ function toggleBluetoothPanel(forceOpen) {
 }
 
 function toggleWifiPanel(forceOpen) {
+  ensureConnectPanelOpen();
   const next = forceOpen === true ? true : forceOpen === false ? false : !wifiPanelOpen;
   if (next) {
     setConnectPanels(false, true);
@@ -112,6 +148,68 @@ function toggleProfilePanel() {
   document.getElementById("btnProfileAction")?.classList.toggle("selected", profilePanelOpen);
   document.getElementById("profilePanel")?.classList.toggle("open", profilePanelOpen);
   if (profilePanelOpen) fillProfileForm();
+}
+
+function loadFriends() {
+  try {
+    const raw = localStorage.getItem(FRIENDS_KEY);
+    friends = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(friends)) friends = [];
+  } catch {
+    friends = [];
+  }
+}
+
+function saveFriends() {
+  localStorage.setItem(FRIENDS_KEY, JSON.stringify(friends));
+}
+
+function setFriendMsg(msg, isError) {
+  const el = document.getElementById("friendMsg");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "profile-msg" + (msg ? (isError ? " err" : " ok") : "");
+}
+
+function renderFriends() {
+  const container = document.getElementById("friendList");
+  if (!container) return;
+  if (!friends.length) {
+    container.innerHTML =
+      '<div class="channel-empty">No friends yet.<br>Add email or name above.</div>';
+    return;
+  }
+  container.innerHTML = "";
+  friends.forEach((f, index) => {
+    const div = document.createElement("div");
+    div.className = "channel-item";
+    div.innerHTML = `
+      <span class="channel-name">${escapeHtml(f.label)}</span>
+      <button type="button" class="delete-btn" title="Remove friend" onclick="removeFriend(${index}); event.stopPropagation();">🗑</button>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function addFriend() {
+  const input = document.getElementById("newFriendInput");
+  const val = input?.value.trim();
+  if (!val) return setFriendMsg("Enter friend email or name.", true);
+  if (friends.some((f) => f.label.toLowerCase() === val.toLowerCase())) {
+    return setFriendMsg("Friend already in list.", true);
+  }
+  friends.push({ label: val });
+  input.value = "";
+  saveFriends();
+  renderFriends();
+  setFriendMsg("Friend added.");
+}
+
+function removeFriend(index) {
+  friends.splice(index, 1);
+  saveFriends();
+  renderFriends();
+  setFriendMsg("Friend removed.");
 }
 
 function setProfileMsg(msg, isError) {
@@ -785,6 +883,15 @@ async function logout() {
   closeMenu();
   setConnectPanels(false, false);
   profilePanelOpen = false;
+  friendPanelOpen = false;
+  connectPanelOpen = false;
+  teamPanelOpen = false;
+  ["btnProfileAction", "btnFriendAction", "btnConnectAction", "btnTeamAction"].forEach((id) => {
+    document.getElementById(id)?.classList.remove("selected");
+  });
+  ["profilePanel", "friendPanel", "connectPanel", "teamPanel"].forEach((id) => {
+    document.getElementById(id)?.classList.remove("open");
+  });
   await disconnectBluetooth();
   try {
     await window.mosAuth.logout();
@@ -800,6 +907,7 @@ async function logout() {
 function boot() {
   initTheme();
   loadChannels();
+  loadFriends();
   loadBtDevices();
   loadSelectedWifi();
   setBtStatus(false);
@@ -832,7 +940,12 @@ Object.assign(window, {
   closeMenu,
   toggleBluetoothPanel,
   toggleWifiPanel,
+  toggleConnectPanel,
+  toggleTeamPanel,
+  toggleFriendPanel,
   toggleProfilePanel,
+  addFriend,
+  removeFriend,
   refreshWifiList,
   saveProfileName,
   saveProfileEmail,

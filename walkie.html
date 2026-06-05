@@ -544,6 +544,21 @@
       height: 36px;
       flex-shrink: 0;
     }
+    .menu-row-icon {
+      width: 36px;
+      height: 36px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-panel);
+    }
+    #connectPanel.open > .action-grid { display: grid; }
+    #connectPanel > .action-grid { margin-top: 0; }
+    #connectPanel #btPanel.open,
+    #connectPanel #wifiPanel.open { display: block; }
 
     @keyframes siri-ring {
       0% { transform: scale(0.85); opacity: 0.6; }
@@ -760,56 +775,10 @@
       <button type="button" class="menu-close" onclick="closeMenu()" aria-label="Close menu">×</button>
     </div>
 
-    <div class="menu-block">
-      <p class="menu-block-title">
-        <svg viewBox="0 0 24 24" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        Switch team
-      </p>
-      <div class="add-channel">
-        <input type="text" id="newChannelName" placeholder="New team name">
-        <button class="btn" style="width:auto; padding:12px 16px; margin:0;" onclick="addNewChannel()">+</button>
-      </div>
-      <div class="channel-list menu-channel-list" id="channelList"></div>
-    </div>
-
-    <div class="menu-block">
-      <p class="menu-block-title">Connect</p>
-      <div class="action-grid">
-        <button type="button" class="action-btn" id="btnBtAction" onclick="toggleBluetoothPanel()">
-          <span class="action-circle">
-            <svg viewBox="0 0 24 24" stroke-width="2"><path d="M6.5 6.5a8 8 0 0 1 11 11M9 9a4 4 0 0 1 6 6M12 12h.01"/></svg>
-          </span>
-          Bluetooth
-        </button>
-        <button type="button" class="action-btn" id="btnWifiAction" onclick="toggleWifiPanel()">
-          <span class="action-circle">
-            <svg viewBox="0 0 24 24" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
-          </span>
-          WiFi
-        </button>
-      </div>
-
-      <div id="btPanel" class="menu-panel">
-        <div class="help-box" style="margin-bottom:8px;">
-          <strong>Bluetooth</strong> — tap a device below. Turn on BT on your device. Use Chrome, Edge, or Windows app.
-        </div>
-        <div id="btStatus" class="conn-line disconnected">Not connected</div>
-        <div class="pick-list" id="btList"></div>
-      </div>
-
-      <div id="wifiPanel" class="menu-panel">
-        <div class="help-box" style="margin-bottom:8px;">
-          <strong>WiFi</strong> — tap your network below. All team members use the same WiFi + same team channel.
-        </div>
-        <div id="wifiStatus" class="conn-line disconnected">Not connected</div>
-        <div class="pick-list" id="wifiList"></div>
-        <button type="button" class="btn btn-sm" onclick="refreshWifiList()">Refresh WiFi list</button>
-      </div>
-    </div>
-
+    <!-- 1. Profile -->
     <div class="menu-block">
       <button type="button" class="menu-theme-row" id="btnProfileAction" onclick="toggleProfilePanel()">
-        <span class="action-circle" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;">
+        <span class="menu-row-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </span>
         Profile
@@ -818,26 +787,98 @@
         <label class="field-label profile-field" for="profileName">Name</label>
         <input type="text" id="profileName" placeholder="Your name" autocomplete="name">
         <button type="button" class="btn btn-sm" onclick="saveProfileName()">Save name</button>
-
         <label class="field-label profile-field" for="profileEmail">Email</label>
         <input type="email" id="profileEmail" placeholder="Email" autocomplete="email">
         <button type="button" class="btn btn-sm" onclick="saveProfileEmail()">Save email</button>
-
         <label class="field-label profile-field" for="profileMobile">Mobile number</label>
         <input type="tel" id="profileMobile" placeholder="10-digit mobile" autocomplete="tel">
         <button type="button" class="btn btn-sm" onclick="saveProfileMobile()">Save mobile</button>
-
         <label class="field-label profile-field" for="profileCurrentPass">Current password</label>
         <input type="password" id="profileCurrentPass" placeholder="For email / password change" autocomplete="current-password">
-
         <label class="field-label profile-field" for="profileNewPass">New password</label>
         <input type="password" id="profileNewPass" placeholder="Min 6 characters" autocomplete="new-password">
         <button type="button" class="btn btn-sm" onclick="saveProfilePassword()">Change password</button>
-
         <p id="profileMsg" class="profile-msg"></p>
       </div>
     </div>
 
+    <!-- 2. Friend -->
+    <div class="menu-block">
+      <button type="button" class="menu-theme-row" id="btnFriendAction" onclick="toggleFriendPanel()">
+        <span class="menu-row-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-2-2m0 0l-2 2m2-2v6"/></svg>
+        </span>
+        Friend
+      </button>
+      <div id="friendPanel" class="menu-panel">
+        <div class="add-channel">
+          <input type="text" id="newFriendInput" placeholder="Friend email or name">
+          <button class="btn" style="width:auto; padding:12px 16px; margin:0;" onclick="addFriend()">+</button>
+        </div>
+        <div class="channel-list menu-channel-list" id="friendList"></div>
+        <p id="friendMsg" class="profile-msg"></p>
+      </div>
+    </div>
+
+    <!-- 3. Connect -->
+    <div class="menu-block">
+      <button type="button" class="menu-theme-row" id="btnConnectAction" onclick="toggleConnectPanel()">
+        <span class="menu-row-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6.5 6.5a8 8 0 0 1 11 11M9 9a4 4 0 0 1 6 6M12 12h.01"/></svg>
+        </span>
+        Connect
+      </button>
+      <div id="connectPanel" class="menu-panel">
+        <div class="action-grid">
+          <button type="button" class="action-btn" id="btnBtAction" onclick="toggleBluetoothPanel(true)">
+            <span class="action-circle">
+              <svg viewBox="0 0 24 24" stroke-width="2"><path d="M6.5 6.5a8 8 0 0 1 11 11M9 9a4 4 0 0 1 6 6M12 12h.01"/></svg>
+            </span>
+            Bluetooth
+          </button>
+          <button type="button" class="action-btn" id="btnWifiAction" onclick="toggleWifiPanel(true)">
+            <span class="action-circle">
+              <svg viewBox="0 0 24 24" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
+            </span>
+            WiFi
+          </button>
+        </div>
+        <div id="btPanel" class="menu-panel">
+          <div class="help-box" style="margin-bottom:8px;">
+            <strong>Bluetooth</strong> — tap a device below. Turn on BT on your device. Use Chrome, Edge, or Windows app.
+          </div>
+          <div id="btStatus" class="conn-line disconnected">Not connected</div>
+          <div class="pick-list" id="btList"></div>
+        </div>
+        <div id="wifiPanel" class="menu-panel">
+          <div class="help-box" style="margin-bottom:8px;">
+            <strong>WiFi</strong> — tap your network below. All team members use the same WiFi + same team channel.
+          </div>
+          <div id="wifiStatus" class="conn-line disconnected">Not connected</div>
+          <div class="pick-list" id="wifiList"></div>
+          <button type="button" class="btn btn-sm" onclick="refreshWifiList()">Refresh WiFi list</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Team -->
+    <div class="menu-block">
+      <button type="button" class="menu-theme-row" id="btnTeamAction" onclick="toggleTeamPanel()">
+        <span class="menu-row-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </span>
+        Team
+      </button>
+      <div id="teamPanel" class="menu-panel">
+        <div class="add-channel">
+          <input type="text" id="newChannelName" placeholder="New team name">
+          <button class="btn" style="width:auto; padding:12px 16px; margin:0;" onclick="addNewChannel()">+</button>
+        </div>
+        <div class="channel-list menu-channel-list" id="channelList"></div>
+      </div>
+    </div>
+
+    <!-- 5. Dark / Light -->
     <div class="menu-block">
       <button type="button" class="menu-theme-row" id="btnThemeRow" onclick="toggleTheme()">
         <span class="theme-toggle" aria-hidden="true">
@@ -847,10 +888,11 @@
             <circle cx="20" cy="20" r="19" fill="none" stroke="#a3a3a3" stroke-width="1"/>
           </svg>
         </span>
-        Dark / Light theme
+        Dark / Light
       </button>
     </div>
 
+    <!-- 6. Logout -->
     <div class="menu-block">
       <button class="btn btn-logout" onclick="logout()">Logout</button>
     </div>
