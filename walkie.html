@@ -266,6 +266,36 @@
     .channel-create { flex-direction: column; align-items: stretch; }
     .channel-create-row { display: flex; gap: 8px; width: 100%; }
     .channel-freq-input { width: 100%; box-sizing: border-box; margin: 0; }
+    .channel-search {
+      width: 100%;
+      box-sizing: border-box;
+      margin: 0 0 10px;
+      padding: 10px 12px 10px 36px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg-card);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+    }
+    .channel-search:focus {
+      outline: none;
+      border-color: var(--text-muted);
+    }
+    .channel-search-wrap {
+      position: relative;
+      margin-bottom: 8px;
+    }
+    .channel-search-icon {
+      position: absolute;
+      left: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      color: var(--text-muted);
+      pointer-events: none;
+    }
     .add-symbol {
       flex-shrink: 0;
       width: 36px;
@@ -1393,6 +1423,10 @@
           <input type="text" id="newChannelFreq" class="channel-freq-input" placeholder="Frequency MHz (optional, e.g. 462.5625)" inputmode="decimal">
         </div>
         <p class="profile-hint" style="margin:0 0 8px;text-align:left;">Each channel gets a unique ID + frequency to talk on.</p>
+        <div class="channel-search-wrap">
+          <svg class="channel-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="search" id="channelSearch" class="channel-search" placeholder="Search name, ID, or frequency" oninput="filterChannels()" autocomplete="off">
+        </div>
         <div class="channel-list menu-channel-list" id="channelList"></div>
       </div>
     </div>

@@ -216,7 +216,10 @@ function toggleChannelPanel() {
   channelPanelOpen = !channelPanelOpen;
   document.getElementById("btnChannelAction")?.classList.toggle("selected", channelPanelOpen);
   document.getElementById("channelPanel")?.classList.toggle("open", channelPanelOpen);
-  if (channelPanelOpen) renderChannels();
+  if (channelPanelOpen) {
+    renderChannels();
+    requestAnimationFrame(() => document.getElementById("channelSearch")?.focus());
+  }
 }
 
 function toggleTeamPanel() {
@@ -1398,9 +1401,25 @@ async function signupWithGoogle() {
   return loginWithGoogle();
 }
 
+function getChannelSearchQuery() {
+  return (document.getElementById("channelSearch")?.value || "").trim().toLowerCase();
+}
+
+function channelMatchesSearch(ch, query) {
+  if (!query) return true;
+  const hay = `${ch.name || ""} ${ch.channelId || ""} ${ch.frequency || ""}`.toLowerCase();
+  return hay.includes(query);
+}
+
+function filterChannels() {
+  renderChannels();
+}
+
 function renderChannels() {
   const container = document.getElementById("channelList");
+  if (!container) return;
   container.innerHTML = "";
+  const query = getChannelSearchQuery();
 
   if (channels.length === 0) {
     container.innerHTML =
@@ -1414,7 +1433,16 @@ function renderChannels() {
     currentChannel = channels[0].id;
   }
 
-  channels.forEach((ch) => {
+  const visible = channels.filter((ch) => channelMatchesSearch(ch, query));
+  if (!visible.length) {
+    container.innerHTML = query
+      ? '<div class="channel-empty">No channels match your search.</div>'
+      : '<div class="channel-empty">No channels yet.<br>Create one above.</div>';
+    updatePttHint();
+    return;
+  }
+
+  visible.forEach((ch) => {
     const div = document.createElement("div");
     div.className = "channel-item" + (ch.id === currentChannel ? " active" : "");
 
@@ -2029,6 +2057,7 @@ Object.assign(window, {
   toggleWifiMenu,
   toggleChannelPanel,
   toggleTeamPanel,
+  filterChannels,
   toggleFriendPanel,
   toggleSettingsPanel,
   toggleSettingsEditor,
