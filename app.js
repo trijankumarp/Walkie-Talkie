@@ -1,4 +1,18 @@
+import { getApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  getDocs,
+  setDoc,
+  doc,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
 const CHANNELS_KEY = "walkie_channels_v1";
+const PUBLIC_CHANNELS_COLLECTION = "publicChannels";
+const CHANNEL_STALE_MS = 5 * 60 * 1000;
 const THEME_KEY = "walkie_theme_v1";
 const BT_DEVICES_KEY = "walkie_bt_devices_v1";
 const WIFI_SEL_KEY = "walkie_wifi_selected_v1";
@@ -70,6 +84,11 @@ let channelPanelOpen = false;
 let friends = [];
 let selectedBtId = null;
 let savedBtDevices = [];
+let nearbyChannels = [];
+let nearbyLoading = false;
+let nearbyRefreshTimer = null;
+let channelHeartbeatTimer = null;
+let channelDb = null;
 
 function generateChannelId() {
   return `CH-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -218,6 +237,7 @@ function toggleChannelPanel() {
   document.getElementById("channelPanel")?.classList.toggle("open", channelPanelOpen);
   if (channelPanelOpen) {
     renderChannels();
+    refreshNearbyChannels();
     requestAnimationFrame(() => document.getElementById("channelSearch")?.focus());
   }
 }
@@ -1271,6 +1291,8 @@ function enterApp(user) {
   renderSettingsList();
   if (selectedWifiName) setWifiStatus(true, selectedWifiName);
   renderBluetoothList();
+  startChannelWifiSync();
+  refreshNearbyChannels();
 }
 
 window.onFirebaseUser = function (firebaseUser) {
@@ -1405,14 +1427,217 @@ function getChannelSearchQuery() {
   return (document.getElementById("channelSearch")?.value || "").trim().toLowerCase();
 }
 
+function getWifiDiscoveryKey() {
+  if (!selectedWifiName) return null;
+  const n = selectedWifiName.trim();
+  if (!n) return null;
+  if (n === "Current WiFi (browser)") return "channel-wifi";
+  return n.toLowerCase();
+}
+
+function getChannelDb() {
+  if (channelDb) return channelDb;
+  if (!window.mosAuth?.isConfigured?.()) return null;
+  try {
+    channelDb = getFirestore(getApp());
+    return channelDb;
+  } catch {
+    return null;
+  }
+}
+
+function channelDocIsFresh(data) {
+  const ts = data.updatedAt?.toMillis?.();
+  if (!ts) return true;
+  return Date.now() - ts < CHANNEL_STALE_MS;
+}
+
+function getLocalChannelByPublicId(publicId) {
+  return channels.find((c) => c.channelId === publicId);
+}
+
 function channelMatchesSearch(ch, query) {
   if (!query) return true;
-  const hay = `${ch.name || ""} ${ch.channelId || ""} ${ch.frequency || ""}`.toLowerCase();
+  const hay = `${ch.name || ""} ${ch.channelId || ""} ${ch.frequency || ""} ${ch.ownerName || ""}`.toLowerCase();
   return hay.includes(query);
+}
+
+function scheduleNearbyRefresh() {
+  clearTimeout(nearbyRefreshTimer);
+  nearbyRefreshTimer = setTimeout(() => refreshNearbyChannels(), 300);
 }
 
 function filterChannels() {
   renderChannels();
+  scheduleNearbyRefresh();
+}
+
+async function publishActiveChannelToWifi() {
+  const db = getChannelDb();
+  const wifiKey = getWifiDiscoveryKey();
+  if (!db || !wifiKey || !loggedInUser) return;
+  const ch = getActiveChannel();
+  if (!ch?.channelId) return;
+  try {
+    await setDoc(
+      doc(db, PUBLIC_CHANNELS_COLLECTION, ch.channelId),
+      {
+        name: ch.name,
+        frequency: ch.frequency,
+        channelId: ch.channelId,
+        wifiKey,
+        ownerUid: loggedInUser.uid,
+        ownerName: loggedInUser.name || "User",
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn("Channel publish failed", err);
+  }
+}
+
+async function refreshNearbyChannels() {
+  const wifiKey = getWifiDiscoveryKey();
+  if (!wifiKey || !isLoggedIn) {
+    nearbyChannels = [];
+    nearbyLoading = false;
+    if (channelPanelOpen) renderChannels();
+    return;
+  }
+  const db = getChannelDb();
+  if (!db) return;
+  nearbyLoading = true;
+  if (channelPanelOpen) renderChannels();
+  try {
+    const snap = await getDocs(
+      query(collection(db, PUBLIC_CHANNELS_COLLECTION), where("wifiKey", "==", wifiKey))
+    );
+    const list = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (!channelDocIsFresh(data)) return;
+      const channelId = data.channelId || docSnap.id;
+      if (getLocalChannelByPublicId(channelId)) return;
+      list.push({
+        name: data.name || "Channel",
+        channelId,
+        frequency: String(data.frequency || ""),
+        ownerName: data.ownerName || ""
+      });
+    });
+    list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+    nearbyChannels = list;
+  } catch (err) {
+    console.warn("Nearby channel search failed", err);
+    nearbyChannels = [];
+  }
+  nearbyLoading = false;
+  if (channelPanelOpen) renderChannels();
+}
+
+function startChannelWifiSync() {
+  stopChannelWifiSync();
+  publishActiveChannelToWifi();
+  channelHeartbeatTimer = setInterval(() => {
+    publishActiveChannelToWifi();
+    if (channelPanelOpen) refreshNearbyChannels();
+  }, 45000);
+}
+
+function stopChannelWifiSync() {
+  if (channelHeartbeatTimer) clearInterval(channelHeartbeatTimer);
+  channelHeartbeatTimer = null;
+  nearbyChannels = [];
+  nearbyLoading = false;
+}
+
+function appendChannelEmpty(container, html) {
+  const el = document.createElement("div");
+  el.className = "channel-empty";
+  el.innerHTML = html;
+  container.appendChild(el);
+}
+
+function appendChannelSectionLabel(container, text) {
+  const el = document.createElement("div");
+  el.className = "channel-section-label";
+  el.textContent = text;
+  container.appendChild(el);
+}
+
+function selectLocalChannel(id) {
+  currentChannel = id;
+  renderChannels();
+  refreshStatusBar();
+  updatePttHint();
+  publishActiveChannelToWifi();
+  closeMenu();
+}
+
+function joinNearbyChannel(publicId) {
+  const nearby = nearbyChannels.find((c) => c.channelId === publicId);
+  if (!nearby) return;
+  const existing = getLocalChannelByPublicId(publicId);
+  if (existing) {
+    selectLocalChannel(existing.id);
+    return;
+  }
+  const newId = channels.length ? Math.max(...channels.map((c) => c.id)) + 1 : 1;
+  const record = normalizeChannelRecord({
+    id: newId,
+    name: nearby.name,
+    channelId: nearby.channelId,
+    frequency: nearby.frequency || generateChannelFrequency()
+  });
+  channels.push(record);
+  currentChannel = newId;
+  saveChannels();
+  renderChannels();
+  updatePttHint();
+  publishActiveChannelToWifi();
+  refreshNearbyChannels();
+  closeMenu();
+}
+
+function renderLocalChannelItem(container, ch) {
+  const div = document.createElement("div");
+  div.className = "channel-item" + (ch.id === currentChannel ? " active" : "");
+  div.innerHTML = `
+    <div class="channel-info">
+      <span class="channel-name">${escapeHtml(ch.name)}</span>
+      <span class="channel-meta">${escapeHtml(getChannelMetaLine(ch))}</span>
+    </div>
+    <button type="button" class="delete-btn" title="Delete channel" aria-label="Delete channel">🗑</button>
+  `;
+  div.querySelector(".delete-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    deleteChannel(ch.id);
+  });
+  div.addEventListener("click", (e) => {
+    if (e.target.classList.contains("delete-btn")) return;
+    selectLocalChannel(ch.id);
+  });
+  container.appendChild(div);
+}
+
+function renderNearbyChannelItem(container, ch) {
+  const div = document.createElement("div");
+  div.className = "channel-item channel-item-nearby";
+  const owner = ch.ownerName ? ` · ${ch.ownerName}` : "";
+  div.innerHTML = `
+    <div class="channel-info">
+      <span class="channel-name">${escapeHtml(ch.name)}</span>
+      <span class="channel-meta">${escapeHtml(getChannelMetaLine(ch))}${escapeHtml(owner)}</span>
+    </div>
+    <button type="button" class="channel-join-btn">Join</button>
+  `;
+  div.querySelector(".channel-join-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    joinNearbyChannel(ch.channelId);
+  });
+  div.addEventListener("click", () => joinNearbyChannel(ch.channelId));
+  container.appendChild(div);
 }
 
 function renderChannels() {
@@ -1420,51 +1645,57 @@ function renderChannels() {
   if (!container) return;
   container.innerHTML = "";
   const query = getChannelSearchQuery();
+  const wifiKey = getWifiDiscoveryKey();
 
-  if (channels.length === 0) {
-    container.innerHTML =
-      '<div class="channel-empty">No channels yet.<br>Create one above.</div>';
-    currentChannel = null;
-    updatePttHint();
-    return;
+  if (!wifiKey) {
+    appendChannelEmpty(
+      container,
+      "Open <strong>WiFi</strong> in menu and select your network (or “Same WiFi as channel”) to find channels nearby."
+    );
+  } else if (nearbyLoading) {
+    appendChannelEmpty(container, "Searching channels on your WiFi…");
   }
 
-  if (!currentChannel || !channels.some((c) => c.id === currentChannel)) {
+  if (channels.length && (!currentChannel || !channels.some((c) => c.id === currentChannel))) {
     currentChannel = channels[0].id;
   }
 
-  const visible = channels.filter((ch) => channelMatchesSearch(ch, query));
-  if (!visible.length) {
-    container.innerHTML = query
-      ? '<div class="channel-empty">No channels match your search.</div>'
-      : '<div class="channel-empty">No channels yet.<br>Create one above.</div>';
-    updatePttHint();
-    return;
+  const localVisible = channels.filter((ch) => channelMatchesSearch(ch, query));
+  const nearbyVisible = wifiKey
+    ? nearbyChannels.filter((ch) => channelMatchesSearch(ch, query))
+    : [];
+
+  if (localVisible.length) {
+    if (wifiKey && (nearbyVisible.length || channels.length > 1)) {
+      appendChannelSectionLabel(container, "Your channels");
+    }
+    localVisible.forEach((ch) => renderLocalChannelItem(container, ch));
   }
 
-  visible.forEach((ch) => {
-    const div = document.createElement("div");
-    div.className = "channel-item" + (ch.id === currentChannel ? " active" : "");
+  if (nearbyVisible.length) {
+    appendChannelSectionLabel(container, "On same WiFi");
+    nearbyVisible.forEach((ch) => renderNearbyChannelItem(container, ch));
+  }
 
-    div.innerHTML = `
-      <div class="channel-info">
-        <span class="channel-name">${escapeHtml(ch.name)}</span>
-        <span class="channel-meta">${escapeHtml(getChannelMetaLine(ch))}</span>
-      </div>
-      <button type="button" class="delete-btn" title="Delete channel" aria-label="Delete channel" onclick="deleteChannel(${ch.id}); event.stopImmediatePropagation();">🗑</button>
-    `;
+  if (!localVisible.length && !nearbyVisible.length && !nearbyLoading) {
+    if (query) {
+      appendChannelEmpty(
+        container,
+        wifiKey
+          ? "No channels match your search on this WiFi.<br>Ask others to open Channel with the same WiFi selected."
+          : "No channels match your search."
+      );
+    } else if (!channels.length && wifiKey) {
+      appendChannelEmpty(
+        container,
+        "No channels on this WiFi yet.<br>Create one above — others on the same WiFi will see it in search."
+      );
+    } else if (!channels.length) {
+      appendChannelEmpty(container, "No channels yet.<br>Create one above.");
+      currentChannel = null;
+    }
+  }
 
-    div.onclick = (e) => {
-      if (e.target.classList.contains("delete-btn")) return;
-      currentChannel = ch.id;
-      renderChannels();
-      refreshStatusBar();
-      updatePttHint();
-      closeMenu();
-    };
-
-    container.appendChild(div);
-  });
   updatePttHint();
 }
 
@@ -1508,6 +1739,8 @@ function addNewChannel() {
   saveChannels();
   renderChannels();
   updatePttHint();
+  publishActiveChannelToWifi();
+  refreshNearbyChannels();
 }
 
 function setBluetoothUi(connected, deviceName, deviceId) {
@@ -1670,6 +1903,10 @@ function selectWifiNetwork(name) {
     setWifiStatus(true, name);
   }
   renderWifiList(lastWifiScanNetworks, lastWifiConnected);
+  if (isLoggedIn) {
+    publishActiveChannelToWifi();
+    refreshNearbyChannels();
+  }
 }
 
 let lastWifiScanNetworks = [];
@@ -1686,6 +1923,8 @@ function renderWifiList(networks, connectedSsid) {
   }
 
   let html = "";
+  const sameWifiActive = selectedWifiName === "channel-wifi" ? " active" : "";
+  html += `<div class="pick-item${sameWifiActive}" data-wifi="channel-wifi">Same WiFi as channel (all devices)</div>`;
   if (connectedSsid) {
     const active = selectedWifiName === connectedSsid ? " active" : "";
     html += `<div class="pick-item${active}" data-wifi="${escapeHtml(connectedSsid)}">${escapeHtml(connectedSsid)} (connected)</div>`;
@@ -1982,6 +2221,7 @@ function stopTalk(e) {
 
 async function logout() {
   isLoggedIn = false;
+  stopChannelWifiSync();
   stopTalk();
   closeMenu();
   setBluetoothMenuOpen(false);

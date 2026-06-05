@@ -212,6 +212,31 @@
       font-size: 14px;
       line-height: 1.5;
     }
+    .channel-section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 10px 4px 6px;
+    }
+    .channel-item-nearby {
+      border-style: dashed;
+    }
+    .channel-join-btn {
+      flex-shrink: 0;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 500;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--accent-soft);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .channel-join-btn:hover {
+      border-color: var(--text-muted);
+    }
     .delete-btn {
       background: transparent;
       color: var(--text-muted);
@@ -1398,7 +1423,7 @@
       </button>
       <div id="wifiPanel" class="menu-panel">
         <div class="help-box" style="margin-bottom:8px;">
-          <strong>WiFi</strong> — tap your network below. Use the same WiFi + same channel ID to talk together.
+          <strong>WiFi</strong> — pick the same option on every device (network name or “Same WiFi as channel”), then search in Channel.
         </div>
         <div id="wifiStatus" class="conn-line disconnected">Not connected</div>
         <div class="pick-list" id="wifiList"></div>
@@ -1422,10 +1447,10 @@
           </div>
           <input type="text" id="newChannelFreq" class="channel-freq-input" placeholder="Frequency MHz (optional, e.g. 462.5625)" inputmode="decimal">
         </div>
-        <p class="profile-hint" style="margin:0 0 8px;text-align:left;">Each channel gets a unique ID + frequency to talk on.</p>
+        <p class="profile-hint" style="margin:0 0 8px;text-align:left;">Same WiFi + search finds channels from other devices. Each channel has a unique ID + frequency.</p>
         <div class="channel-search-wrap">
           <svg class="channel-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="search" id="channelSearch" class="channel-search" placeholder="Search name, ID, or frequency" oninput="filterChannels()" autocomplete="off">
+          <input type="search" id="channelSearch" class="channel-search" placeholder="Search nearby & your channels" oninput="filterChannels()" autocomplete="off">
         </div>
         <div class="channel-list menu-channel-list" id="channelList"></div>
       </div>
