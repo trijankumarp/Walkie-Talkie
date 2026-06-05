@@ -44,13 +44,26 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function setAuthError(msg) {
+function clearFieldErrors() {
+  document.querySelectorAll("input.input-error").forEach((el) => el.classList.remove("input-error"));
+}
+
+function setFieldError(...inputIds) {
+  inputIds.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add("input-error");
+  });
+}
+
+function setAuthError(msg, fieldIds = []) {
+  clearFieldErrors();
+  if (fieldIds.length) setFieldError(...fieldIds);
   const el = document.getElementById("authError");
   if (!el) return;
   if (msg && msg.includes("Authentication is not enabled")) {
     el.innerHTML =
       msg +
-      '<br><a href="https://console.firebase.google.com/project/walkietalkie-mos/authentication" target="_blank" rel="noopener" style="color:#00cc66;margin-top:8px;display:inline-block;">Open Firebase Authentication →</a>';
+      '<br><a href="https://console.firebase.google.com/project/walkietalkie-mos/authentication" target="_blank" rel="noopener" style="color:#2563eb;margin-top:8px;display:inline-block;">Open Firebase Authentication →</a>';
   } else {
     el.textContent = msg || "";
   }
@@ -74,7 +87,7 @@ function requireFirebase() {
 }
 
 function showAuthTab(tab) {
-  setAuthError("");
+  setAuthError("", []);
   const isLogin = tab === "login";
   document.getElementById("tabLogin").classList.toggle("active", isLogin);
   document.getElementById("tabSignup").classList.toggle("active", !isLogin);
@@ -86,7 +99,7 @@ function refreshStatusBar() {
   if (!loggedInUser || !isLoggedIn) return;
   const ch = getActiveChannelName();
   const chLine = ch
-    ? `<br><span style="color:#00ff88;font-size:13px;">Channel: ${ch}</span>`
+    ? `<br><span class="accent" style="font-size:13px;">Channel: ${ch}</span>`
     : "";
   document.getElementById("status").innerHTML = `Logged in as <strong>${loggedInUser.name}</strong><br><span style="font-size:13px;color:#888">${loggedInUser.email}</span>${chLine}`;
 }
@@ -118,20 +131,25 @@ async function signup() {
   const confirm = document.getElementById("signupConfirm").value;
 
   if (!name) return setAuthError("Please enter your full name.");
-  if (!email) return setAuthError("Please enter Gmail or email address.");
-  if (!isValidEmail(email)) return setAuthError("Enter a valid email (e.g. you@gmail.com).");
-  if (password.length < 6) return setAuthError("Password must be at least 6 characters.");
-  if (password !== confirm) return setAuthError("Passwords do not match.");
+  if (!email) return setAuthError("Please enter Gmail or email address.", ["signupEmail"]);
+  if (!isValidEmail(email))
+    return setAuthError("Wrong email format. Use you@gmail.com", ["signupEmail"]);
+  if (password.length < 6) return setAuthError("Password must be at least 6 characters.", ["signupPassword"]);
+  if (password !== confirm)
+    return setAuthError("Passwords do not match.", ["signupPassword", "signupConfirm"]);
 
   setAuthLoading(true);
-  setAuthError("");
+  setAuthError("", []);
   try {
     await window.mosAuth.signupEmail(name, email, password);
     alert("Account created successfully!");
     showAuthTab("login");
     document.getElementById("loginEmail").value = email;
   } catch (err) {
-    setAuthError(window.mosAuth.mapError(err));
+    const msg = window.mosAuth.mapError(err);
+    const fields =
+      msg.includes("email") || err?.code?.includes("email") ? ["signupEmail"] : [];
+    setAuthError(msg, fields);
   } finally {
     setAuthLoading(false);
   }
@@ -142,12 +160,13 @@ async function login() {
   const email = document.getElementById("loginEmail").value.trim().toLowerCase();
   const password = document.getElementById("loginPassword").value;
 
-  if (!email) return setAuthError("Please enter Gmail or email address.");
-  if (!isValidEmail(email)) return setAuthError("Enter a valid email address.");
-  if (!password) return setAuthError("Please enter your password.");
+  if (!email) return setAuthError("Please enter Gmail or email address.", ["loginEmail"]);
+  if (!isValidEmail(email))
+    return setAuthError("Wrong email ID. Check and try again.", ["loginEmail"]);
+  if (!password) return setAuthError("Please enter your password.", ["loginPassword"]);
 
   setAuthLoading(true);
-  setAuthError("");
+  setAuthError("", []);
   try {
     const user = await window.mosAuth.loginEmail(email, password);
     enterApp({
@@ -155,7 +174,16 @@ async function login() {
       email: user.email
     });
   } catch (err) {
-    setAuthError(window.mosAuth.mapError(err));
+    const msg = window.mosAuth.mapError(err);
+    const fields = ["loginEmail", "loginPassword"];
+    if (
+      err?.code === "auth/user-not-found" ||
+      err?.code === "auth/invalid-email" ||
+      err?.code === "auth/invalid-credential"
+    ) {
+      setFieldError("loginEmail");
+    }
+    setAuthError(msg, fields);
   } finally {
     setAuthLoading(false);
   }
@@ -164,7 +192,7 @@ async function login() {
 async function loginWithGoogle() {
   if (!requireFirebase()) return;
   setAuthLoading(true);
-  setAuthError("");
+  setAuthError("", []);
   try {
     const user = await window.mosAuth.loginGoogle();
     enterApp({
@@ -172,7 +200,7 @@ async function loginWithGoogle() {
       email: user.email
     });
   } catch (err) {
-    setAuthError(window.mosAuth.mapError(err));
+    setAuthError(window.mosAuth.mapError(err), []);
   } finally {
     setAuthLoading(false);
   }
@@ -252,7 +280,7 @@ function setBluetoothUi(connected, deviceName) {
     if (disconnectBtn) disconnectBtn.style.display = "block";
     if (conn) {
       conn.innerHTML = `Bluetooth connected: <strong>${deviceName}</strong>`;
-      conn.style.color = "#00ff88";
+      conn.style.color = "#2563eb";
     }
   } else {
     if (disconnectBtn) disconnectBtn.style.display = "none";
@@ -346,7 +374,7 @@ async function scanWiFi() {
         document.getElementById("connStatus").innerHTML = result.connected
           ? `WiFi: ${result.connected}`
           : `Found ${result.networks.length} networks`;
-        document.getElementById("connStatus").style.color = "#00ff88";
+        document.getElementById("connStatus").style.color = "#2563eb";
         return;
       }
       list.innerHTML = `<div class="item warn">${result.message || "No networks found."}</div>`;
@@ -364,14 +392,18 @@ async function scanWiFi() {
     <div class="item warn">For WiFi list scan use the Windows desktop app.</div>
   `;
   document.getElementById("connStatus").innerHTML = "Team WiFi mode";
-  document.getElementById("connStatus").style.color = "#00ff88";
+  document.getElementById("connStatus").style.color = "#2563eb";
 }
 
 function toggleMute() {
   isMuted = !isMuted;
-  const el = document.getElementById("muteStatus");
-  el.innerHTML = isMuted ? "Muted" : "Unmuted";
-  el.style.color = isMuted ? "#ff4444" : "#ffcc00";
+  const btn = document.getElementById("muteBtn");
+  const icon = document.getElementById("muteIcon");
+  const label = document.getElementById("muteLabel");
+  if (btn) btn.classList.toggle("muted", isMuted);
+  if (icon) icon.textContent = isMuted ? "🔇" : "🔊";
+  if (label) label.textContent = isMuted ? "Muted" : "Mute";
+  if (isMuted && isTalking) stopTalk();
 }
 
 function setPttVisual(talking) {
@@ -394,7 +426,7 @@ function startTalk(e) {
   isTalking = true;
   setPttVisual(true);
   const ch = getActiveChannelName();
-  document.getElementById("status").innerHTML = `<span style="color:#00ff88;">Transmitting on <strong>${ch}</strong></span>`;
+  document.getElementById("status").innerHTML = `<span class="accent">Transmitting on <strong>${ch}</strong></span>`;
 }
 
 function stopTalk(e) {
@@ -417,7 +449,7 @@ async function logout() {
   document.getElementById("mainUI").style.display = "none";
   document.getElementById("loginScreen").style.display = "block";
   showAuthTab("login");
-  setAuthError("");
+  setAuthError("", []);
 }
 
 function boot() {

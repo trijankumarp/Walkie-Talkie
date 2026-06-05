@@ -5,140 +5,186 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Walkie Talkie | M-OS</title>
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#00cc66">
+  <meta name="theme-color" content="#2563eb">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-    body { 
-      font-family: 'Inter', system-ui, sans-serif; 
-      background: #0a0a0a; 
-      color: #e0e0e0; 
-      margin:0; 
-      padding:0; 
+    :root {
+      --blue: #2563eb;
+      --blue-light: #3b82f6;
+      --blue-soft: #dbeafe;
+      --white: #ffffff;
+      --gray-50: #f8fafc;
+      --gray-100: #f1f5f9;
+      --gray-200: #e2e8f0;
+      --gray-400: #94a3b8;
+      --gray-600: #475569;
+      --gray-800: #1e293b;
+      --red: #dc2626;
+      --red-bg: #fef2f2;
     }
-    .container { 
-      max-width: 420px; 
-      margin: 0 auto; 
-      padding: 16px; 
-      background: #111; 
-      min-height: 100vh; 
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: linear-gradient(180deg, var(--gray-100) 0%, var(--blue-soft) 100%);
+      color: var(--gray-800);
+      margin: 0;
+      padding: 0;
     }
-    header { 
-      text-align: center; 
-      padding: 20px 0; 
-      background: #1a1a1a; 
-      border-radius: 12px; 
+    .container {
+      max-width: 420px;
+      margin: 0 auto;
+      padding: 16px;
+      background: var(--white);
+      min-height: 100vh;
+      box-shadow: 0 0 40px rgba(37, 99, 235, 0.08);
+    }
+    header {
+      text-align: center;
+      padding: 20px 16px;
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: 12px;
       margin-bottom: 20px;
     }
-    h1 { 
-      margin: 0; 
-      font-size: 28px; 
-      font-weight: 600; 
-      color: #00ff88; 
-      letter-spacing: 1px;
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--blue);
+      letter-spacing: 0.5px;
     }
-    .status { 
-      padding: 12px; 
-      background: #1f1f1f; 
-      border-radius: 8px; 
-      text-align: center; 
-      font-size: 15px; 
+    h2.panel-title {
+      text-align: center;
+      color: var(--blue);
+      margin-top: 0;
+      font-size: 20px;
+    }
+    .status {
+      padding: 12px;
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      text-align: center;
+      font-size: 14px;
+      color: var(--gray-600);
       margin-bottom: 16px;
     }
-    .btn { 
-      display: block; 
-      width: 100%; 
-      padding: 16px; 
-      margin: 12px 0; 
-      background: #00cc66; 
-      color: white; 
-      border: none; 
-      font-size: 17px; 
-      font-weight: 600; 
-      border-radius: 10px; 
-      cursor: pointer; 
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      margin: 10px 0;
+      background: var(--blue);
+      color: var(--white);
+      border: none;
+      font-size: 16px;
+      font-weight: 600;
+      border-radius: 10px;
+      cursor: pointer;
       transition: all 0.2s;
     }
-    .btn:hover { background: #00ff88; }
-    .btn:active { transform: scale(0.97); background: #00aa55; }
+    .btn:hover { background: var(--blue-light); }
+    .btn:active { transform: scale(0.98); }
+    .btn-logout { background: var(--gray-600); }
+    .btn-logout:hover { background: var(--gray-800); }
 
-    .list, .channel-list { 
-      background: #1a1a1a; 
-      padding: 12px; 
-      margin: 12px 0; 
-      border-radius: 10px; 
-      max-height: 200px; 
-      overflow-y: auto; 
+    .list, .channel-list {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      padding: 12px;
+      margin: 12px 0;
+      border-radius: 10px;
+      max-height: 200px;
+      overflow-y: auto;
     }
-    .channel-item { 
-      display: flex; 
-      justify-content: space-between; 
+    .channel-item {
+      display: flex;
+      justify-content: space-between;
       align-items: center;
-      padding: 14px; 
-      background: #252525; 
-      margin: 8px 0; 
-      border-radius: 8px; 
-      cursor: pointer; 
-      transition: all 0.2s;
+      padding: 12px;
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      margin: 8px 0;
+      border-radius: 8px;
+      cursor: pointer;
     }
-    .channel-item:hover { background: #333; }
+    .channel-item:hover { background: var(--blue-soft); }
     .channel-item.active {
-      background: #1a3d2e;
-      border: 1px solid #00cc66;
-      box-shadow: 0 0 12px rgba(0, 204, 102, 0.25);
+      background: var(--blue-soft);
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
     }
-    .channel-name { flex: 1; font-weight: 500; }
+    .channel-name { flex: 1; font-weight: 500; color: var(--gray-800); }
     .channel-empty {
       text-align: center;
-      color: #666;
+      color: var(--gray-400);
       padding: 20px 12px;
       font-size: 14px;
       line-height: 1.5;
     }
-    .delete-btn { 
-      background: #ff4444; 
-      color: white; 
-      border: none; 
-      padding: 6px 12px; 
-      border-radius: 6px; 
-      font-size: 14px; 
-      cursor: pointer; 
+    .delete-btn {
+      background: var(--red);
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
     }
-    .delete-btn:active { background: #ff6666; }
 
-    .item { 
-      padding: 12px; 
-      background: #252525; 
-      margin: 6px 0; 
-      border-radius: 8px; 
-      cursor: pointer; 
+    .item {
+      padding: 12px;
+      background: var(--white);
+      border: 1px solid var(--gray-200);
+      margin: 6px 0;
+      border-radius: 8px;
+      color: var(--gray-600);
+      font-size: 14px;
     }
-    input { 
-      width: 100%; 
-      padding: 14px; 
-      margin: 8px 0; 
-      background: #1f1f1f; 
-      color: #e0e0e0; 
-      border: 1px solid #00cc66; 
-      border-radius: 8px; 
-      font-size: 16px; 
+    input {
+      width: 100%;
+      padding: 14px;
+      margin: 6px 0 10px;
+      background: var(--white);
+      color: var(--gray-800);
+      border: 1px solid var(--gray-200);
+      border-radius: 8px;
+      font-size: 16px;
       box-sizing: border-box;
+      transition: border-color 0.2s, background 0.2s;
     }
-    .add-channel { 
-      display: flex; 
-      gap: 10px; 
-      margin: 12px 0; 
+    input:focus {
+      outline: none;
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
     }
-    .ptt-section {
+    input.input-error {
+      border-color: var(--red);
+      background: var(--red-bg);
+      color: var(--red);
+    }
+    .add-channel { display: flex; gap: 10px; margin: 12px 0; }
+
+    .talk-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin: 24px 0 16px;
+      padding: 12px;
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: 16px;
+    }
+    .ptt-col {
       display: flex;
       flex-direction: column;
       align-items: center;
-      margin: 28px 0 20px;
-      padding: 8px 0;
+      flex: 1;
     }
     .ptt-ring {
       position: relative;
-      width: 200px;
-      height: 200px;
+      width: 160px;
+      height: 160px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -149,157 +195,161 @@
       position: absolute;
       inset: 0;
       border-radius: 50%;
-      border: 2px solid rgba(90, 160, 255, 0.35);
+      border: 2px solid rgba(37, 99, 235, 0.25);
       animation: siri-ring 2.4s ease-out infinite;
     }
-    .ptt-ring::after {
-      animation-delay: 1.2s;
-    }
+    .ptt-ring::after { animation-delay: 1.2s; }
     .ptt-orb {
-      width: 168px;
-      height: 168px;
+      width: 140px;
+      height: 140px;
       border-radius: 50%;
-      position: relative;
       z-index: 1;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 4px;
-      background: radial-gradient(circle at 32% 28%, #7eb8ff 0%, #3b82f6 35%, #1d4ed8 62%, #0f172a 100%);
-      box-shadow:
-        0 0 50px rgba(59, 130, 246, 0.55),
-        0 0 100px rgba(59, 130, 246, 0.2),
-        inset 0 -8px 24px rgba(0, 0, 0, 0.35),
-        inset 0 8px 20px rgba(255, 255, 255, 0.12);
-      transition: transform 0.15s ease, box-shadow 0.2s ease;
+      gap: 6px;
+      background: radial-gradient(circle at 32% 28%, #93c5fd 0%, #3b82f6 40%, #2563eb 70%, #1d4ed8 100%);
+      box-shadow: 0 8px 32px rgba(37, 99, 235, 0.35);
+      transition: transform 0.15s ease;
       user-select: none;
       cursor: pointer;
     }
     .ptt-orb.talking {
-      background: radial-gradient(circle at 32% 28%, #6ee7b7 0%, #10b981 38%, #047857 65%, #022c22 100%);
-      box-shadow:
-        0 0 60px rgba(16, 185, 129, 0.7),
-        0 0 120px rgba(16, 185, 129, 0.35),
-        inset 0 -8px 24px rgba(0, 0, 0, 0.3);
+      background: radial-gradient(circle at 32% 28%, #bfdbfe 0%, #60a5fa 45%, #2563eb 100%);
       animation: siri-breathe 0.9s ease-in-out infinite;
     }
     .ptt-orb:active { transform: scale(0.96); }
     .ptt-icon {
-      width: 36px;
-      height: 36px;
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
-      background: rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.35);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 18px;
+      font-size: 20px;
     }
     .ptt-text {
-      color: rgba(255, 255, 255, 0.95);
-      font-size: 13px;
+      color: var(--white);
+      font-size: 11px;
       font-weight: 600;
-      letter-spacing: 1.2px;
+      letter-spacing: 1px;
       text-transform: uppercase;
     }
     .ptt-hint {
-      margin-top: 14px;
-      font-size: 13px;
-      color: #666;
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--gray-400);
       text-align: center;
     }
+
+    .mute-side {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 2px solid var(--gray-200);
+      background: var(--white);
+      color: var(--gray-600);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.2s;
+      padding: 0;
+    }
+    .mute-side:hover { background: var(--gray-100); border-color: var(--blue); }
+    .mute-side.muted {
+      background: var(--red-bg);
+      border-color: var(--red);
+      color: var(--red);
+    }
+    .mute-side .mute-icon { font-size: 26px; line-height: 1; }
+    .mute-side .mute-label { font-size: 11px; font-weight: 600; text-transform: uppercase; }
+
     @keyframes siri-ring {
-      0% { transform: scale(0.85); opacity: 0.7; }
-      100% { transform: scale(1.35); opacity: 0; }
+      0% { transform: scale(0.85); opacity: 0.6; }
+      100% { transform: scale(1.3); opacity: 0; }
     }
     @keyframes siri-breathe {
       0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.04); }
+      50% { transform: scale(1.05); }
     }
-    .btn-connect {
-      background: #2563eb;
-    }
-    .btn-connect:hover { background: #3b82f6; }
-    .btn-disconnect {
-      background: #444;
-      margin-top: 8px;
-    }
+
+    .btn-connect { background: var(--blue); }
+    .btn-disconnect { background: var(--gray-600); margin-top: 8px; }
     .section-title {
-      color: #00ff88;
-      margin: 20px 0 8px;
-      font-size: 17px;
+      color: var(--blue);
+      margin: 18px 0 8px;
+      font-size: 16px;
       font-weight: 600;
     }
-    .auth-tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-    }
+    .auth-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
     .auth-tab {
       flex: 1;
       padding: 12px;
-      background: #1f1f1f;
-      color: #888;
-      border: 1px solid #333;
+      background: var(--gray-50);
+      color: var(--gray-600);
+      border: 1px solid var(--gray-200);
       border-radius: 8px;
       font-size: 15px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
     }
     .auth-tab.active {
-      background: #00cc66;
-      color: #fff;
-      border-color: #00cc66;
+      background: var(--blue);
+      color: var(--white);
+      border-color: var(--blue);
     }
     .auth-panel { display: none; }
     .auth-panel.active { display: block; }
     .field-label {
       display: block;
       font-size: 13px;
-      color: #888;
-      margin: 12px 0 4px;
+      color: var(--gray-600);
+      margin: 10px 0 2px;
+      font-weight: 500;
     }
-    .auth-hint {
-      font-size: 12px;
-      color: #666;
-      text-align: center;
-      margin-top: 8px;
-    }
+    .auth-hint { font-size: 12px; color: var(--gray-400); text-align: center; margin-top: 8px; }
     .auth-error {
-      color: #ff6666;
+      color: var(--red);
+      background: var(--red-bg);
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 10px 12px;
       font-size: 13px;
       text-align: center;
       margin: 8px 0;
       min-height: 18px;
     }
     .btn-google {
-      background: #fff;
-      color: #333;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
+      background: var(--white);
+      color: var(--gray-800);
+      border: 1px solid var(--gray-200);
     }
-    .btn-google:hover { background: #f0f0f0; }
+    .btn-google:hover { background: var(--gray-50); }
     .btn-secondary {
-      background: transparent;
-      color: #00cc66;
-      border: 1px solid #00cc66;
+      background: var(--white);
+      color: var(--blue);
+      border: 1px solid var(--blue);
     }
-    .btn-secondary:hover { background: #1a2a1f; }
+    .btn-secondary:hover { background: var(--blue-soft); }
     .info-banner {
-      background: #1a2a22;
-      border: 1px solid #00cc66;
+      background: var(--blue-soft);
+      border: 1px solid #93c5fd;
       border-radius: 10px;
       padding: 12px;
       font-size: 13px;
-      color: #aaa;
+      color: var(--gray-600);
       margin: 10px 0;
       line-height: 1.5;
     }
-    .item.ok { border-left: 3px solid #00cc66; }
-    .item.warn { border-left: 3px solid #ffcc00; }
+    .item.ok { border-left: 3px solid var(--blue); }
+    .item.warn { border-left: 3px solid #f59e0b; }
+    .accent { color: var(--blue); }
   </style>
 </head>
 <body>
@@ -320,7 +370,7 @@
 
       <!-- Login -->
       <div id="panelLogin" class="auth-panel active">
-        <h2 style="text-align:center; color:#00ff88; margin-top:0;">Login</h2>
+        <h2 class="panel-title">Login</h2>
         <label class="field-label" for="loginEmail">Gmail / Email Address</label>
         <input type="email" id="loginEmail" placeholder="you@gmail.com" autocomplete="email">
         <label class="field-label" for="loginPassword">Password</label>
@@ -334,7 +384,7 @@
 
       <!-- Sign Up -->
       <div id="panelSignup" class="auth-panel">
-        <h2 style="text-align:center; color:#00ff88; margin-top:0;">Sign Up</h2>
+        <h2 class="panel-title">Sign Up</h2>
         <label class="field-label" for="signupName">Full Name</label>
         <input type="text" id="signupName" placeholder="Your name" autocomplete="name">
         <label class="field-label" for="signupEmail">Gmail / Email Address</label>
@@ -364,19 +414,25 @@
       </div>
       <div class="channel-list" id="channelList"></div>
 
-      <div class="ptt-section">
-        <div class="ptt-ring">
-          <div class="ptt-orb" id="pttBtn"
-               onmousedown="startTalk()"
-               onmouseup="stopTalk()"
-               onmouseleave="stopTalk()"
-               ontouchstart="startTalk(event)"
-               ontouchend="stopTalk(event)">
-            <div class="ptt-icon" id="pttIcon">🎙</div>
-            <span class="ptt-text" id="pttLabel">Hold to talk</span>
+      <div class="talk-row">
+        <div class="ptt-col">
+          <div class="ptt-ring">
+            <div class="ptt-orb" id="pttBtn"
+                 onmousedown="startTalk()"
+                 onmouseup="stopTalk()"
+                 onmouseleave="stopTalk()"
+                 ontouchstart="startTalk(event)"
+                 ontouchend="stopTalk(event)">
+              <div class="ptt-icon" id="pttIcon">🎙</div>
+              <span class="ptt-text" id="pttLabel">Hold to talk</span>
+            </div>
           </div>
+          <p class="ptt-hint" id="pttHint">Select or create a channel first</p>
         </div>
-        <p class="ptt-hint" id="pttHint">Select or create a channel first</p>
+        <button type="button" class="mute-side" id="muteBtn" onclick="toggleMute()" aria-label="Mute">
+          <span class="mute-icon" id="muteIcon">🔊</span>
+          <span class="mute-label" id="muteLabel">Mute</span>
+        </button>
       </div>
 
       <div class="section-title">Connect</div>
@@ -391,10 +447,7 @@
 
       <div class="status" id="connStatus">No connection</div>
 
-      <button class="btn" onclick="toggleMute()">Mute / Unmute</button>
-      <div id="muteStatus" style="text-align:center; color:#ffcc00; font-weight:500; margin:8px 0;">Unmuted</div>
-
-      <button class="btn" style="background:#444;" onclick="logout()">Logout</button>
+      <button class="btn btn-logout" onclick="logout()">Logout</button>
     </div>
   </div>
 
