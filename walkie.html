@@ -614,6 +614,98 @@
       color: var(--text);
       cursor: pointer;
     }
+    .settings-list {
+      border-radius: 0;
+      overflow: hidden;
+      border: none;
+      margin-bottom: 0;
+      background: transparent;
+    }
+    .settings-list.hidden { display: none; }
+    .settings-row {
+      display: flex;
+      align-items: flex-start;
+      width: 100%;
+      padding: 16px 4px;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      text-align: left;
+      font-family: inherit;
+      gap: 16px;
+      color: var(--text);
+    }
+    .settings-row:last-child { border-bottom: none; }
+    .settings-row:hover { background: var(--accent-soft); }
+    .settings-row.settings-row-photo { align-items: center; }
+    .settings-row-icon {
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+      color: var(--text-muted);
+    }
+    .settings-row-icon svg { width: 22px; height: 22px; stroke: currentColor; fill: none; }
+    .settings-row-body { flex: 1; min-width: 0; }
+    .settings-row-label {
+      display: block;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+    }
+    .settings-row-value {
+      display: block;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 3px;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .settings-row-value .verified-inline {
+      color: #16a34a;
+      font-weight: 600;
+      margin-left: 4px;
+    }
+    .settings-row-avatar {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: linear-gradient(135deg, #db2777, #9333ea);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      font-weight: 600;
+      color: #fff;
+      background-size: cover;
+      background-position: center;
+    }
+    .settings-row-avatar.emoji { font-size: 28px; font-weight: 400; }
+    .settings-editor {
+      display: none;
+      margin-bottom: 12px;
+      padding: 14px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .settings-editor.open { display: block; }
+    .settings-editor-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0 0 12px;
+      color: var(--text);
+    }
+    .settings-editor-back {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 13px;
+      cursor: pointer;
+      padding: 0 0 10px;
+      margin-bottom: 4px;
+    }
     .menu-close {
       width: 36px;
       height: 36px;
@@ -722,6 +814,52 @@
     .profile-msg.ok { color: var(--text); }
     .profile-msg.err { color: var(--red); }
     .profile-field { margin-bottom: 4px; }
+    .profile-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin: 10px 0 6px;
+    }
+    .profile-input {
+      width: 100%;
+      box-sizing: border-box;
+      margin: 0 0 8px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg-card);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 15px;
+    }
+    .profile-input:focus {
+      outline: none;
+      border-color: var(--text-muted);
+    }
+    textarea.profile-input { resize: vertical; min-height: 72px; }
+    .profile-hint {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin: 0 0 12px;
+      line-height: 1.45;
+    }
+    .profile-check {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--text);
+      margin: 8px 0 14px;
+      cursor: pointer;
+    }
+    .profile-check input { width: auto; margin: 0; }
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    html[data-theme="dark"] .btn-outline { color: #fafafa; }
     .btn-sm {
       padding: 10px 14px;
       font-size: 14px;
@@ -999,72 +1137,110 @@
         Settings
       </button>
       <div id="settingsPanel" class="menu-panel">
-        <p class="field-label">Profile picture</p>
-        <div class="avatar-preview" id="settingsAvatarPreview">?</div>
-        <div class="avatar-actions">
-          <button type="button" class="btn btn-sm" onclick="document.getElementById('avatarGalleryInput').click()">Gallery</button>
-          <button type="button" class="btn btn-sm" onclick="document.getElementById('avatarCameraInput').click()">Take picture</button>
+        <div class="settings-list">
+          <button type="button" class="settings-row settings-row-photo" onclick="openSettingsEditor('photo')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+            <span class="settings-row-body"><span class="settings-row-label">Profile picture</span></span>
+            <span class="settings-row-avatar" id="settingsListAvatar">?</span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('name')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Name</span>
+              <span class="settings-row-value" id="settingsNameValue">Not set</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('gender')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Gender</span>
+              <span class="settings-row-value" id="settingsGenderValue">Not set</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('email')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="m22 6-10 7L2 6"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Email</span>
+              <span class="settings-row-value" id="settingsEmailValue">—</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('phone')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Phone</span>
+              <span class="settings-row-value" id="settingsPhoneValue">Not set</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('birthday')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><path d="M2 21h20"/><path d="M7 8v3M12 7v4M17 8v3"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Birthday</span>
+              <span class="settings-row-value" id="settingsBirthdayValue">Not set</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('language')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Language</span>
+              <span class="settings-row-value" id="settingsLanguageValue">English</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('home')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Home address</span>
+              <span class="settings-row-value" id="settingsHomeValue">Not set</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('work')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Work address</span>
+              <span class="settings-row-value" id="settingsWorkValue">Not set</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('other')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Other addresses</span>
+              <span class="settings-row-value" id="settingsOtherValue">Not set</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('password')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Password</span>
+              <span class="settings-row-value" id="settingsPasswordValue">Change password</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('permissions')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">App permissions</span>
+              <span class="settings-row-value" id="settingsPermValue">Tap to manage</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row" onclick="openSettingsEditor('biometric')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 11c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2z"/><path d="M12 2a10 10 0 0 1 10 10"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Biometric login</span>
+              <span class="settings-row-value" id="settingsBioValue">Off</span>
+            </span>
+          </button>
         </div>
+
+        <div id="settingsEditor" class="settings-editor">
+          <button type="button" class="settings-editor-back" onclick="closeSettingsEditor()">← Back to list</button>
+          <p class="settings-editor-title" id="settingsEditorTitle">Edit</p>
+          <div id="settingsEditorBody"></div>
+        </div>
+        <p id="profileMsg" class="profile-msg"></p>
+
         <input type="file" id="avatarGalleryInput" accept="image/*" hidden>
         <input type="file" id="avatarCameraInput" accept="image/*" capture="user" hidden>
-        <p class="field-label" style="margin-top:4px;">Or pick emoji</p>
-        <div class="emoji-grid" id="emojiGrid"></div>
-
-        <span class="account-badge">Individual</span>
-        <label class="field-label">Name</label>
-        <div class="name-row">
-          <input type="text" id="profileFirstName" placeholder="First name" autocomplete="given-name">
-          <input type="text" id="profileLastName" placeholder="Last name" autocomplete="family-name">
-        </div>
-        <button type="button" class="btn btn-sm" onclick="saveProfileName()">Save name</button>
-
-        <label class="field-label profile-field">Email</label>
-        <div class="email-display-row">
-          <span id="profileEmailDisplay" style="flex:1;">—</span>
-          <span id="emailVerifiedBadge" class="verified-badge no" title="Not verified">✓</span>
-        </div>
-        <button type="button" class="btn btn-sm" id="btnResendVerify" style="display:none;" onclick="resendEmailVerification()">Resend verification email</button>
-
-        <label class="field-label profile-field" for="profileEmail">Change email</label>
-        <input type="email" id="profileEmail" placeholder="New email address" autocomplete="email">
-        <button type="button" class="btn btn-sm" onclick="sendEmailChangeOtp()">Send verification code</button>
-        <div id="emailOtpBox" class="otp-box">
-          <label class="field-label" for="profileEmailOtp">Email verification code</label>
-          <input type="text" id="profileEmailOtp" inputmode="numeric" maxlength="6" placeholder="6-digit OTP">
-          <button type="button" class="btn btn-sm" onclick="confirmEmailChange()">Verify & save email</button>
-          <p class="otp-hint">Enter password above, then code sent to your new email.</p>
-        </div>
-
-        <label class="field-label profile-field">New mobile number</label>
-        <div class="phone-row">
-          <select id="profileCountry" aria-label="Country code"></select>
-          <input type="tel" id="profileMobile" placeholder="Phone number" autocomplete="tel">
-        </div>
         <div id="recaptcha-container"></div>
-        <button type="button" class="btn btn-sm" onclick="sendMobileChangeOtp()">Send OTP to new number</button>
-        <div id="mobileOtpBox" class="otp-box">
-          <label class="field-label" for="profileMobileOtp">Mobile verification code</label>
-          <input type="text" id="profileMobileOtp" inputmode="numeric" maxlength="6" placeholder="6-digit OTP">
-          <button type="button" class="btn btn-sm" onclick="confirmMobileChange()">Verify & save mobile</button>
-          <p class="otp-hint">SMS OTP (Firebase Phone Auth). Password required before send.</p>
-        </div>
-
-        <p class="field-label profile-field">App permissions</p>
-        <div id="permissionsList" class="perm-list"></div>
-        <button type="button" class="btn btn-sm" onclick="refreshAppPermissions()">Refresh permissions</button>
-
-        <div class="bio-row">
-          <span>Biometric login</span>
-          <input type="checkbox" id="profileBiometric" onchange="onBiometricToggle(this.checked)">
-        </div>
-        <button type="button" class="btn btn-sm" onclick="setupBiometric()">Set up fingerprint / Face ID</button>
-
-        <label class="field-label profile-field" for="profileCurrentPass">Current password (required for OTP)</label>
-        <input type="password" id="profileCurrentPass" placeholder="Your login password" autocomplete="current-password">
-        <label class="field-label profile-field" for="profileNewPass">New password</label>
-        <input type="password" id="profileNewPass" placeholder="Min 6 characters" autocomplete="new-password">
-        <button type="button" class="btn btn-sm" onclick="saveProfilePassword()">Change password</button>
-        <p id="profileMsg" class="profile-msg"></p>
+        <div class="emoji-grid" id="emojiGrid" style="display:none;"></div>
+        <select id="profileCountry" aria-label="Country code" style="display:none;"></select>
       </div>
     </div>
 

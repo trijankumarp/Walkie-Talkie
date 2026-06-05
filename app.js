@@ -6,8 +6,34 @@ const PROFILE_MOBILE_KEY = "walkie_profile_mobile_v1";
 const PROFILE_NAMES_KEY = "walkie_profile_names_v1";
 const PROFILE_AVATAR_KEY = "walkie_avatar_v1";
 const PROFILE_COUNTRY_KEY = "walkie_country_v1";
+const PROFILE_EXTRA_KEY = "walkie_profile_extra_v1";
+const PASSWORD_CHANGED_KEY = "walkie_password_changed_v1";
 const BIOMETRIC_KEY = "walkie_biometric_v1";
 const FRIENDS_KEY = "walkie_friends_v1";
+
+const GENDER_OPTIONS = [
+  { value: "", label: "Not set" },
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "other", label: "Other" },
+  { value: "prefer_not", label: "Prefer not to say" }
+];
+
+const LANGUAGE_OPTIONS = [
+  "English",
+  "Hindi",
+  "Telugu",
+  "Tamil",
+  "Kannada",
+  "Malayalam",
+  "Bengali",
+  "Marathi",
+  "Gujarati",
+  "Punjabi",
+  "Urdu"
+];
+
+let settingsEditorKey = null;
 
 const COUNTRY_CODES = [
   { code: "+91", label: "IN +91", country: "India" },
@@ -159,9 +185,328 @@ function toggleSettingsPanel() {
   document.getElementById("btnSettingsAction")?.classList.toggle("selected", settingsPanelOpen);
   document.getElementById("settingsPanel")?.classList.toggle("open", settingsPanelOpen);
   if (settingsPanelOpen) {
-    fillProfileForm();
-    renderAppPermissions();
+    closeSettingsEditor();
+    renderSettingsList();
   }
+}
+
+function loadProfileExtra(uid) {
+  if (!uid) return {};
+  try {
+    const raw = localStorage.getItem(`${PROFILE_EXTRA_KEY}_${uid}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveProfileExtra(uid, patch) {
+  if (!uid) return;
+  const cur = loadProfileExtra(uid);
+  localStorage.setItem(`${PROFILE_EXTRA_KEY}_${uid}`, JSON.stringify({ ...cur, ...patch }));
+  renderSettingsList();
+}
+
+function formatPasswordChanged(iso) {
+  if (!iso) return "Change password";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "Change password";
+    return `Last changed ${d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+  } catch {
+    return "Change password";
+  }
+}
+
+function getMobileDisplay(uid) {
+  const raw = localStorage.getItem(`${PROFILE_MOBILE_KEY}_${uid}`);
+  let parsed = { country: "+91", number: "", verified: false };
+  try {
+    if (raw?.startsWith("{")) parsed = { ...parsed, ...JSON.parse(raw) };
+    else if (raw) parsed.number = raw;
+  } catch {
+    if (raw) parsed.number = raw;
+  }
+  const savedCountry = localStorage.getItem(`${PROFILE_COUNTRY_KEY}_${uid}`);
+  if (savedCountry) parsed.country = savedCountry;
+  if (!parsed.number) return null;
+  return `${parsed.country} ${parsed.number}`;
+}
+
+function renderSettingsList() {
+  if (!loggedInUser) return;
+  const uid = getProfileUid();
+  const extra = loadProfileExtra(uid);
+  const names = loadUserNames(uid);
+  let firstName = names.firstName;
+  let lastName = names.lastName;
+  if (!firstName && !lastName && loggedInUser.name) {
+    const parsed = parseNameParts(loggedInUser.name);
+    firstName = parsed.firstName;
+    lastName = parsed.lastName;
+  }
+  const fullName = `${firstName} ${lastName}`.trim() || loggedInUser.name || "Not set";
+
+  applyAvatarToElement(document.getElementById("settingsListAvatar"), getStoredAvatar(), fullName);
+
+  const setVal = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text || "Not set";
+  };
+
+  setVal("settingsNameValue", fullName === "Not set" ? "Not set" : fullName);
+
+  const genderOpt = GENDER_OPTIONS.find((g) => g.value === (extra.gender || ""));
+  setVal("settingsGenderValue", genderOpt?.label || "Not set");
+
+  const emailEl = document.getElementById("settingsEmailValue");
+  if (emailEl) {
+    const email = loggedInUser.email || "—";
+    const verified =
+      loggedInUser.emailVerified ?? window.mosAuth?.isEmailVerified?.() ?? false;
+    emailEl.innerHTML = verified
+      ? `${escapeHtml(email)} <span class="verified-inline">✓</span>`
+      : escapeHtml(email);
+  }
+
+  const phone = getMobileDisplay(uid);
+  setVal("settingsPhoneValue", phone || "Not set");
+
+  setVal(
+    "settingsBirthdayValue",
+    extra.birthday
+      ? new Date(extra.birthday + "T12:00:00").toLocaleDateString(undefined, {
+          month: "long",
+          day: "numeric",
+          year: "numeric"
+        })
+      : "Not set"
+  );
+
+  setVal("settingsLanguageValue", extra.language || "English");
+  setVal("settingsHomeValue", extra.homeAddress || "Not set");
+  setVal("settingsWorkValue", extra.workAddress || "Not set");
+  setVal("settingsOtherValue", extra.otherAddresses || "Not set");
+
+  const pwdChanged = localStorage.getItem(`${PASSWORD_CHANGED_KEY}_${uid}`);
+  setVal("settingsPasswordValue", formatPasswordChanged(pwdChanged));
+
+  const permEl = document.getElementById("settingsPermValue");
+  if (permEl) permEl.textContent = "Tap to manage";
+
+  const bioOn = localStorage.getItem(`${BIOMETRIC_KEY}_${uid}`) === "1";
+  setVal("settingsBioValue", bioOn ? "On" : "Off");
+
+  updateMenuAvatar();
+}
+
+function closeSettingsEditor() {
+  settingsEditorKey = null;
+  document.getElementById("settingsEditor")?.classList.remove("open");
+  document.getElementById("settingsList")?.classList.remove("hidden");
+  const grid = document.getElementById("emojiGrid");
+  const panel = document.getElementById("settingsPanel");
+  if (grid && panel && !panel.contains(grid)) {
+    panel.appendChild(grid);
+    grid.style.display = "none";
+  }
+}
+
+function openSettingsEditor(key) {
+  settingsEditorKey = key;
+  const titles = {
+    photo: "Profile picture",
+    name: "Name",
+    gender: "Gender",
+    email: "Email",
+    phone: "Phone",
+    birthday: "Birthday",
+    language: "Language",
+    home: "Home address",
+    work: "Work address",
+    other: "Other addresses",
+    password: "Password",
+    permissions: "App permissions",
+    biometric: "Biometric login"
+  };
+  const titleEl = document.getElementById("settingsEditorTitle");
+  const bodyEl = document.getElementById("settingsEditorBody");
+  if (!bodyEl) return;
+  if (titleEl) titleEl.textContent = titles[key] || "Edit";
+  bodyEl.innerHTML = buildSettingsEditorHtml(key);
+  document.getElementById("settingsList")?.classList.add("hidden");
+  document.getElementById("settingsEditor")?.classList.add("open");
+
+  fillProfileForm();
+  if (key === "permissions") renderAppPermissions();
+  if (key === "photo") {
+    const grid = document.getElementById("emojiGrid");
+    const mount = document.getElementById("emojiGridMount");
+    if (grid && mount) {
+      mount.appendChild(grid);
+      grid.style.display = "none";
+    }
+  }
+}
+
+function buildSettingsEditorHtml(key) {
+  const uid = getProfileUid();
+  const extra = loadProfileExtra(uid);
+  const genderOpts = GENDER_OPTIONS.map(
+    (g) =>
+      `<option value="${g.value}"${extra.gender === g.value ? " selected" : ""}>${g.label}</option>`
+  ).join("");
+  const langOpts = LANGUAGE_OPTIONS.map(
+    (l) => `<option${(extra.language || "English") === l ? " selected" : ""}>${l}</option>`
+  ).join("");
+
+  const editors = {
+    photo: `
+      <div class="profile-avatar-row" style="justify-content:center;margin-bottom:16px;">
+        <div class="settings-row-avatar" id="settingsAvatarPreview" style="width:80px;height:80px;font-size:28px;">?</div>
+      </div>
+      <div class="action-grid" style="grid-template-columns:repeat(3,1fr);">
+        <button type="button" class="action-btn" onclick="pickAvatarGallery()">
+          <span class="action-circle"><svg viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></span>
+          Gallery
+        </button>
+        <button type="button" class="action-btn" onclick="pickAvatarCamera()">
+          <span class="action-circle"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+          Camera
+        </button>
+        <button type="button" class="action-btn" onclick="toggleEmojiPicker()">
+          <span class="action-circle"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01"/></svg></span>
+          Emoji
+        </button>
+      </div>
+      <p class="profile-hint">Choose a photo, take one, or pick an emoji.</p>
+      <div id="emojiGridMount"></div>`,
+    name: `
+      <label class="profile-label">First name</label>
+      <input type="text" id="profileFirstName" class="profile-input" placeholder="First name" autocomplete="given-name">
+      <label class="profile-label">Last name</label>
+      <input type="text" id="profileLastName" class="profile-input" placeholder="Last name" autocomplete="family-name">
+      <button type="button" class="btn btn-sm" onclick="saveProfileName()">Save name</button>`,
+    gender: `
+      <label class="profile-label">Gender</label>
+      <select id="profileGender" class="profile-input">${genderOpts}</select>
+      <button type="button" class="btn btn-sm" onclick="saveProfileGender()">Save</button>`,
+    email: `
+      <p class="profile-hint">Current: <strong id="profileEmailDisplay">—</strong>
+        <span id="emailVerifiedBadge" class="verified-badge" title="Verification">✓</span>
+      </p>
+      <button type="button" class="btn btn-sm btn-outline" id="btnResendVerify" onclick="resendEmailVerification()" style="margin-bottom:10px;">Resend verification email</button>
+      <label class="profile-label">New email</label>
+      <input type="email" id="profileEmail" class="profile-input" placeholder="new@email.com" autocomplete="email">
+      <label class="profile-label">Current password</label>
+      <input type="password" id="profileCurrentPass" class="profile-input" placeholder="Required to change email" autocomplete="current-password">
+      <button type="button" class="btn btn-sm" onclick="sendEmailChangeOtp()">Send code to new email</button>
+      <div id="emailOtpBox" class="otp-box">
+        <label class="profile-label">6-digit code</label>
+        <input type="text" id="profileEmailOtp" class="profile-input" inputmode="numeric" maxlength="6" placeholder="000000">
+        <button type="button" class="btn btn-sm" onclick="confirmEmailChange()">Verify &amp; update email</button>
+      </div>`,
+    phone: `
+      <label class="profile-label">Country</label>
+      <select id="profileCountry" class="profile-input"></select>
+      <label class="profile-label">Mobile number</label>
+      <input type="tel" id="profileMobile" class="profile-input" placeholder="Phone number" inputmode="tel" autocomplete="tel">
+      <label class="profile-label">Current password</label>
+      <input type="password" id="profileCurrentPass" class="profile-input" placeholder="Required to change phone" autocomplete="current-password">
+      <button type="button" class="btn btn-sm" onclick="sendMobileChangeOtp()">Send OTP</button>
+      <div id="mobileOtpBox" class="otp-box">
+        <label class="profile-label">6-digit OTP</label>
+        <input type="text" id="profileMobileOtp" class="profile-input" inputmode="numeric" maxlength="6" placeholder="000000">
+        <button type="button" class="btn btn-sm" onclick="confirmMobileChange()">Verify &amp; save phone</button>
+      </div>`,
+    birthday: `
+      <label class="profile-label">Birthday</label>
+      <input type="date" id="profileBirthday" class="profile-input" value="${extra.birthday || ""}">
+      <button type="button" class="btn btn-sm" onclick="saveProfileBirthday()">Save</button>`,
+    language: `
+      <label class="profile-label">Language</label>
+      <select id="profileLanguage" class="profile-input">${langOpts}</select>
+      <button type="button" class="btn btn-sm" onclick="saveProfileLanguage()">Save</button>`,
+    home: `
+      <label class="profile-label">Home address</label>
+      <textarea id="profileHome" class="profile-input" rows="3" placeholder="Street, city, postal code">${escapeHtml(extra.homeAddress || "")}</textarea>
+      <button type="button" class="btn btn-sm" onclick="saveProfileAddress('home')">Save</button>`,
+    work: `
+      <label class="profile-label">Work address</label>
+      <textarea id="profileWork" class="profile-input" rows="3" placeholder="Office address">${escapeHtml(extra.workAddress || "")}</textarea>
+      <button type="button" class="btn btn-sm" onclick="saveProfileAddress('work')">Save</button>`,
+    other: `
+      <label class="profile-label">Other addresses</label>
+      <textarea id="profileOther" class="profile-input" rows="3" placeholder="Additional addresses">${escapeHtml(extra.otherAddresses || "")}</textarea>
+      <button type="button" class="btn btn-sm" onclick="saveProfileAddress('other')">Save</button>`,
+    password: `
+      <p class="profile-hint">${escapeHtml(formatPasswordChanged(localStorage.getItem(`${PASSWORD_CHANGED_KEY}_${uid}`)))}</p>
+      <label class="profile-label">Current password</label>
+      <input type="password" id="profileCurrentPass" class="profile-input" autocomplete="current-password">
+      <label class="profile-label">New password</label>
+      <input type="password" id="profileNewPass" class="profile-input" autocomplete="new-password" minlength="6">
+      <button type="button" class="btn btn-sm" onclick="saveProfilePassword()">Change password</button>`,
+    permissions: `<div class="perm-list" id="permissionsList"></div>
+      <button type="button" class="btn btn-sm btn-outline" onclick="refreshAppPermissions()">Refresh status</button>`,
+    biometric: `
+      <label class="profile-check">
+        <input type="checkbox" id="profileBiometric" onchange="onBiometricToggle(this.checked)">
+        Use fingerprint / face on this device
+      </label>
+      <button type="button" class="btn btn-sm" onclick="setupBiometric()">Set up biometric</button>`
+  };
+  return editors[key] || "<p class=\"profile-hint\">Not available.</p>";
+}
+
+function pickAvatarGallery() {
+  document.getElementById("avatarGalleryInput")?.click();
+}
+
+function pickAvatarCamera() {
+  document.getElementById("avatarCameraInput")?.click();
+}
+
+function toggleEmojiPicker() {
+  const grid = document.getElementById("emojiGrid");
+  if (!grid) return;
+  const show = grid.style.display !== "grid";
+  grid.style.display = show ? "grid" : "none";
+  if (show) grid.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function saveProfileGender() {
+  const val = document.getElementById("profileGender")?.value || "";
+  saveProfileExtra(getProfileUid(), { gender: val });
+  setProfileMsg("Gender saved.");
+  closeSettingsEditor();
+}
+
+function saveProfileBirthday() {
+  const val = document.getElementById("profileBirthday")?.value || "";
+  saveProfileExtra(getProfileUid(), { birthday: val });
+  setProfileMsg(val ? "Birthday saved." : "Birthday cleared.");
+  closeSettingsEditor();
+}
+
+function saveProfileLanguage() {
+  const val = document.getElementById("profileLanguage")?.value || "English";
+  saveProfileExtra(getProfileUid(), { language: val });
+  setProfileMsg("Language saved.");
+  closeSettingsEditor();
+}
+
+function saveProfileAddress(which) {
+  const map = {
+    home: { id: "profileHome", key: "homeAddress" },
+    work: { id: "profileWork", key: "workAddress" },
+    other: { id: "profileOther", key: "otherAddresses" }
+  };
+  const cfg = map[which];
+  if (!cfg) return;
+  const val = document.getElementById(cfg.id)?.value.trim() || "";
+  saveProfileExtra(getProfileUid(), { [cfg.key]: val });
+  setProfileMsg("Address saved.");
+  closeSettingsEditor();
 }
 
 function getInitials(name) {
@@ -200,6 +545,7 @@ function updateMenuAvatar() {
   const av = getStoredAvatar();
   const name = getFullName(loggedInUser) || "User";
   applyAvatarToElement(document.getElementById("menuAvatar"), av, name);
+  applyAvatarToElement(document.getElementById("settingsListAvatar"), av, name);
   applyAvatarToElement(document.getElementById("settingsAvatarPreview"), av, name);
   const nameEl = document.getElementById("menuUserName");
   if (nameEl) nameEl.textContent = name;
@@ -210,6 +556,7 @@ function saveAvatar(data) {
   if (!uid) return;
   localStorage.setItem(`${PROFILE_AVATAR_KEY}_${uid}`, data);
   updateMenuAvatar();
+  renderSettingsList();
 }
 
 function resizeImageFile(file, maxSize, quality) {
@@ -242,6 +589,7 @@ function initAvatarPickers() {
       b.textContent = em;
       b.onclick = () => {
         saveAvatar(`emoji:${em}`);
+        renderSettingsList();
         setProfileMsg("Profile picture updated.");
       };
       grid.appendChild(b);
@@ -255,6 +603,7 @@ function initAvatarPickers() {
     try {
       const dataUrl = await resizeImageFile(file, 256, 0.82);
       saveAvatar(dataUrl);
+      renderSettingsList();
       setProfileMsg("Photo saved.");
     } catch {
       setProfileMsg("Could not load image.", true);
@@ -448,6 +797,7 @@ function onBiometricToggle(enabled) {
   const uid = getProfileUid();
   if (!uid) return;
   localStorage.setItem(`${BIOMETRIC_KEY}_${uid}`, enabled ? "1" : "0");
+  renderSettingsList();
   if (!enabled) setProfileMsg("Biometric login off.");
 }
 
@@ -479,6 +829,7 @@ async function setupBiometric() {
     localStorage.setItem(`${BIOMETRIC_KEY}_${uid}`, "1");
     const cb = document.getElementById("profileBiometric");
     if (cb) cb.checked = true;
+    renderSettingsList();
     setProfileMsg("Biometric enabled on this device.");
   } catch (err) {
     setProfileMsg(err.message || "Biometric setup cancelled.", true);
@@ -775,6 +1126,7 @@ function enterApp(user) {
   renderChannels();
   updatePttHint();
   updateMenuAvatar();
+  renderSettingsList();
   if (selectedWifiName) setWifiStatus(true, selectedWifiName);
   renderBluetoothList();
 }
@@ -1211,7 +1563,9 @@ async function saveProfileName() {
     loggedInUser.name = fullName;
     refreshStatusBar();
     updateMenuAvatar();
+    renderSettingsList();
     setProfileMsg("Name updated.");
+    closeSettingsEditor();
   } catch (err) {
     setProfileMsg(window.mosAuth.mapError(err), true);
   }
@@ -1262,6 +1616,7 @@ async function confirmEmailChange() {
     showOtpBox("emailOtpBox", false);
     refreshStatusBar();
     updateEmailVerifiedBadge();
+    renderSettingsList();
     setProfileMsg("Email verified and updated.");
   } catch (err) {
     setProfileMsg(window.mosAuth.mapError(err), true);
@@ -1315,6 +1670,7 @@ async function confirmMobileChange() {
     saveMobileProfile(uid, country, number, true);
     document.getElementById("profileMobileOtp").value = "";
     showOtpBox("mobileOtpBox", false);
+    renderSettingsList();
     setProfileMsg(`Mobile verified: ${country} ${number}`);
   } catch (err) {
     setProfileMsg(window.mosAuth.mapError(err), true);
@@ -1328,9 +1684,13 @@ async function saveProfilePassword() {
   if (!neu || neu.length < 6) return setProfileMsg("New password min 6 characters.", true);
   try {
     await window.mosAuth.changePassword(cur, neu);
+    const uid = getProfileUid();
+    if (uid) localStorage.setItem(`${PASSWORD_CHANGED_KEY}_${uid}`, new Date().toISOString());
     document.getElementById("profileCurrentPass").value = "";
     document.getElementById("profileNewPass").value = "";
+    renderSettingsList();
     setProfileMsg("Password changed.");
+    closeSettingsEditor();
   } catch (err) {
     setProfileMsg(window.mosAuth.mapError(err), true);
   }
@@ -1372,6 +1732,7 @@ async function logout() {
   setBluetoothMenuOpen(false);
   setWifiMenuOpen(false);
   settingsPanelOpen = false;
+  closeSettingsEditor();
   friendPanelOpen = false;
   teamPanelOpen = false;
   ["btnSettingsAction", "btnFriendAction", "btnBluetoothMenu", "btnWifiMenu", "btnTeamAction"].forEach((id) => {
@@ -1433,6 +1794,15 @@ Object.assign(window, {
   toggleTeamPanel,
   toggleFriendPanel,
   toggleSettingsPanel,
+  openSettingsEditor,
+  closeSettingsEditor,
+  pickAvatarGallery,
+  pickAvatarCamera,
+  toggleEmojiPicker,
+  saveProfileGender,
+  saveProfileBirthday,
+  saveProfileLanguage,
+  saveProfileAddress,
   refreshAppPermissions,
   resendEmailVerification,
   setupBiometric,
