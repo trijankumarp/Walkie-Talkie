@@ -333,13 +333,29 @@ function getLastNameInputForFirst(firstEl) {
 
 function focusLastNameWithSpace(lastEl) {
   if (!lastEl) return;
-  lastEl.focus();
-  const pos = lastEl.selectionStart ?? lastEl.value.length;
-  const val = lastEl.value;
-  if (val.length > 0 && (pos === 0 || val[pos - 1] !== " ")) {
-    lastEl.value = `${val.slice(0, pos)} ${val.slice(pos)}`;
-    lastEl.setSelectionRange(pos + 1, pos + 1);
-  }
+  requestAnimationFrame(() => {
+    try {
+      lastEl.focus({ preventScroll: false });
+    } catch {
+      lastEl.focus();
+    }
+    const pos = lastEl.selectionStart ?? lastEl.value.length;
+    const val = lastEl.value;
+    if (!val.length) {
+      lastEl.setSelectionRange(0, 0);
+      return;
+    }
+    if (val[pos - 1] !== " ") {
+      lastEl.value = `${val.slice(0, pos)} ${val.slice(pos)}`;
+      lastEl.setSelectionRange(pos + 1, pos + 1);
+    } else {
+      lastEl.setSelectionRange(pos, pos);
+    }
+  });
+}
+
+function isSpaceKey(e) {
+  return e.key === " " || e.code === "Space" || e.key === "Spacebar";
 }
 
 function splitPastedNameIntoFields(firstEl, text) {
@@ -363,48 +379,25 @@ function splitPastedNameIntoFields(firstEl, text) {
 function bindFirstNameField(...ids) {
   ids.forEach((id) => {
     const el = document.getElementById(id);
-    if (!el) return;
-    const clean = () => sanitizeFirstNameInput(el);
+    if (!el || el.dataset.firstNameBound) return;
+    el.dataset.firstNameBound = "1";
     el.setAttribute("autocomplete", "off");
     el.setAttribute("spellcheck", "false");
-    el.addEventListener("input", clean);
-    el.addEventListener("blur", clean);
-    el.addEventListener("compositionend", clean);
     el.addEventListener("keydown", (e) => {
-      if (e.key === " " || e.code === "Space") {
-        e.preventDefault();
-        e.stopPropagation();
-        clean();
-        focusLastNameWithSpace(getLastNameInputForFirst(el));
-      }
-    });
-    el.addEventListener("beforeinput", (e) => {
-      if (!e.data || !/\s/.test(e.data)) return;
+      if (!isSpaceKey(e)) return;
       e.preventDefault();
-      clean();
-      const lastEl = getLastNameInputForFirst(el);
-      const chunks = e.data.split(/\s+/).filter(Boolean);
-      if (chunks.length > 1) {
-        splitPastedNameIntoFields(el, [el.value.trim(), ...chunks.slice(1)].filter(Boolean).join(" "));
-        return;
-      }
-      focusLastNameWithSpace(lastEl);
+      e.stopPropagation();
+      sanitizeFirstNameInput(el);
+      focusLastNameWithSpace(getLastNameInputForFirst(el));
     });
+    el.addEventListener("input", () => sanitizeFirstNameInput(el));
     el.addEventListener("paste", (e) => {
-      e.preventDefault();
       const text = e.clipboardData?.getData("text") || "";
-      if (/\s/.test(text)) {
-        splitPastedNameIntoFields(el, text);
-        return;
-      }
-      const start = el.selectionStart ?? el.value.length;
-      const end = el.selectionEnd ?? el.value.length;
-      el.value = el.value.slice(0, start) + text + el.value.slice(end);
-      const pos = start + text.length;
-      el.setSelectionRange(pos, pos);
-      clean();
+      if (!/\s/.test(text)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      splitPastedNameIntoFields(el, text);
     });
-    clean();
   });
 }
 
@@ -517,7 +510,7 @@ function buildSettingsEditorHtml(key) {
       <div class="name-edit-panel">
         <label class="profile-label">First name</label>
         <input type="text" id="profileFirstName" class="profile-input" placeholder="First name" autocomplete="off" spellcheck="false" inputmode="text">
-        <p class="profile-hint" style="margin:-4px 0 10px;">Press <strong>Space</strong> to type middle/last name below.</p>
+        <p class="profile-hint" style="margin:-4px 0 10px;">First name: one word only. Press <strong>Space</strong> → cursor goes to Last name (use space there for Kumar Puvvada).</p>
         <label class="profile-label">Last name</label>
         <input type="text" id="profileLastName" class="profile-input" placeholder="Last name (e.g. Kumar Puvvada)" autocomplete="family-name">
         <div class="name-visibility">
@@ -2020,15 +2013,23 @@ function boot() {
     if (brand) brand.textContent = "Walkie Talkie · Windows";
   }
 
-  document.addEventListener("keydown", (e) => {
-    if (e.key === " " && isLoggedIn && !isTypingInFormField()) {
-      e.preventDefault();
-      startTalk();
-    }
-  });
-  document.addEventListener("keyup", (e) => {
-    if (e.key === " " && isLoggedIn && !isTypingInFormField()) stopTalk();
-  });
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (isSpaceKey(e) && isLoggedIn && !isTypingInFormField()) {
+        e.preventDefault();
+        startTalk();
+      }
+    },
+    true
+  );
+  document.addEventListener(
+    "keyup",
+    (e) => {
+      if (isSpaceKey(e) && isLoggedIn && !isTypingInFormField()) stopTalk();
+    },
+    true
+  );
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeMenu();
   });
