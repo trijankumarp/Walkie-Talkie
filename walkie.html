@@ -253,7 +253,27 @@
       background: var(--red-bg);
       color: var(--red);
     }
-    .add-channel { display: flex; gap: 10px; margin: 12px 0; }
+    .add-channel { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
+    .add-channel input { flex: 1; margin: 0; }
+    .add-symbol {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 28px;
+      font-weight: 300;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0.45;
+      padding: 0;
+      transition: opacity 0.2s, color 0.2s;
+    }
+    .add-symbol:hover {
+      opacity: 1;
+      color: var(--text);
+    }
 
     .radio-screen {
       flex: 1;
@@ -555,10 +575,7 @@
       justify-content: center;
       background: var(--bg-panel);
     }
-    #connectPanel.open > .action-grid { display: grid; }
-    #connectPanel > .action-grid { margin-top: 0; }
-    #connectPanel #btPanel.open,
-    #connectPanel #wifiPanel.open { display: block; }
+
 
     @keyframes siri-ring {
       0% { transform: scale(0.85); opacity: 0.6; }
@@ -761,8 +778,8 @@
           </div>
         </div>
         <div class="conn-chips">
-          <button type="button" class="chip" id="btChip" onclick="openMenu(); toggleBluetoothPanel(true);">Bluetooth: Off</button>
-          <button type="button" class="chip" id="wifiChip" onclick="openMenu(); toggleWifiPanel(true);">WiFi: Off</button>
+          <button type="button" class="chip" id="btChip" onclick="openMenu(); toggleBluetoothMenu(true);">Bluetooth: Off</button>
+          <button type="button" class="chip" id="wifiChip" onclick="openMenu(); toggleWifiMenu(true);">WiFi: Off</button>
         </div>
       </div>
     </div>
@@ -802,66 +819,60 @@
       </div>
     </div>
 
-    <!-- 2. Friend -->
+    <!-- 2. Friends -->
     <div class="menu-block">
       <button type="button" class="menu-theme-row" id="btnFriendAction" onclick="toggleFriendPanel()">
         <span class="menu-row-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-2-2m0 0l-2 2m2-2v6"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </span>
-        Friend
+        Friends
       </button>
       <div id="friendPanel" class="menu-panel">
         <div class="add-channel">
-          <input type="text" id="newFriendInput" placeholder="Friend email or name">
-          <button class="btn" style="width:auto; padding:12px 16px; margin:0;" onclick="addFriend()">+</button>
+          <input type="text" id="newFriendInput" placeholder="Friend email or name" onkeydown="if(event.key==='Enter')addFriend()">
+          <button type="button" class="add-symbol" onclick="addFriend()" aria-label="Add friend">+</button>
         </div>
         <div class="channel-list menu-channel-list" id="friendList"></div>
         <p id="friendMsg" class="profile-msg"></p>
       </div>
     </div>
 
-    <!-- 3. Connect -->
+    <!-- 3. Bluetooth -->
     <div class="menu-block">
-      <button type="button" class="menu-theme-row" id="btnConnectAction" onclick="toggleConnectPanel()">
+      <button type="button" class="menu-theme-row" id="btnBluetoothMenu" onclick="toggleBluetoothMenu()">
         <span class="menu-row-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6.5 6.5a8 8 0 0 1 11 11M9 9a4 4 0 0 1 6 6M12 12h.01"/></svg>
         </span>
-        Connect
+        Bluetooth
       </button>
-      <div id="connectPanel" class="menu-panel">
-        <div class="action-grid">
-          <button type="button" class="action-btn" id="btnBtAction" onclick="toggleBluetoothPanel(true)">
-            <span class="action-circle">
-              <svg viewBox="0 0 24 24" stroke-width="2"><path d="M6.5 6.5a8 8 0 0 1 11 11M9 9a4 4 0 0 1 6 6M12 12h.01"/></svg>
-            </span>
-            Bluetooth
-          </button>
-          <button type="button" class="action-btn" id="btnWifiAction" onclick="toggleWifiPanel(true)">
-            <span class="action-circle">
-              <svg viewBox="0 0 24 24" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
-            </span>
-            WiFi
-          </button>
+      <div id="btPanel" class="menu-panel">
+        <div class="help-box" style="margin-bottom:8px;">
+          <strong>Bluetooth</strong> — tap a device below. Turn on BT on your device. Use Chrome, Edge, or Windows app.
         </div>
-        <div id="btPanel" class="menu-panel">
-          <div class="help-box" style="margin-bottom:8px;">
-            <strong>Bluetooth</strong> — tap a device below. Turn on BT on your device. Use Chrome, Edge, or Windows app.
-          </div>
-          <div id="btStatus" class="conn-line disconnected">Not connected</div>
-          <div class="pick-list" id="btList"></div>
-        </div>
-        <div id="wifiPanel" class="menu-panel">
-          <div class="help-box" style="margin-bottom:8px;">
-            <strong>WiFi</strong> — tap your network below. All team members use the same WiFi + same team channel.
-          </div>
-          <div id="wifiStatus" class="conn-line disconnected">Not connected</div>
-          <div class="pick-list" id="wifiList"></div>
-          <button type="button" class="btn btn-sm" onclick="refreshWifiList()">Refresh WiFi list</button>
-        </div>
+        <div id="btStatus" class="conn-line disconnected">Not connected</div>
+        <div class="pick-list" id="btList"></div>
       </div>
     </div>
 
-    <!-- 4. Team -->
+    <!-- 4. WiFi -->
+    <div class="menu-block">
+      <button type="button" class="menu-theme-row" id="btnWifiMenu" onclick="toggleWifiMenu()">
+        <span class="menu-row-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
+        </span>
+        WiFi
+      </button>
+      <div id="wifiPanel" class="menu-panel">
+        <div class="help-box" style="margin-bottom:8px;">
+          <strong>WiFi</strong> — tap your network below. All team members use the same WiFi + same team channel.
+        </div>
+        <div id="wifiStatus" class="conn-line disconnected">Not connected</div>
+        <div class="pick-list" id="wifiList"></div>
+        <button type="button" class="btn btn-sm" onclick="refreshWifiList()">Refresh WiFi list</button>
+      </div>
+    </div>
+
+    <!-- 5. Team -->
     <div class="menu-block">
       <button type="button" class="menu-theme-row" id="btnTeamAction" onclick="toggleTeamPanel()">
         <span class="menu-row-icon">
@@ -871,14 +882,14 @@
       </button>
       <div id="teamPanel" class="menu-panel">
         <div class="add-channel">
-          <input type="text" id="newChannelName" placeholder="New team name">
-          <button class="btn" style="width:auto; padding:12px 16px; margin:0;" onclick="addNewChannel()">+</button>
+          <input type="text" id="newChannelName" placeholder="New team name" onkeydown="if(event.key==='Enter')addNewChannel()">
+          <button type="button" class="add-symbol" onclick="addNewChannel()" aria-label="Add team">+</button>
         </div>
         <div class="channel-list menu-channel-list" id="channelList"></div>
       </div>
     </div>
 
-    <!-- 5. Dark / Light -->
+    <!-- 6. Dark / Light -->
     <div class="menu-block">
       <button type="button" class="menu-theme-row" id="btnThemeRow" onclick="toggleTheme()">
         <span class="theme-toggle" aria-hidden="true">
@@ -892,7 +903,7 @@
       </button>
     </div>
 
-    <!-- 6. Logout -->
+    <!-- 7. Logout -->
     <div class="menu-block">
       <button class="btn btn-logout" onclick="logout()">Logout</button>
     </div>

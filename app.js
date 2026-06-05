@@ -17,7 +17,6 @@ let btPanelOpen = false;
 let wifiPanelOpen = false;
 let profilePanelOpen = false;
 let friendPanelOpen = false;
-let connectPanelOpen = false;
 let teamPanelOpen = false;
 let friends = [];
 let selectedBtId = null;
@@ -83,28 +82,38 @@ function loadSelectedWifi() {
   selectedWifiName = localStorage.getItem(WIFI_SEL_KEY) || null;
 }
 
-function setConnectPanels(btOpen, wifiOpen) {
-  btPanelOpen = btOpen;
-  wifiPanelOpen = wifiOpen;
-  document.getElementById("btnBtAction")?.classList.toggle("selected", btOpen);
-  document.getElementById("btnWifiAction")?.classList.toggle("selected", wifiOpen);
-  document.getElementById("btPanel")?.classList.toggle("open", btOpen);
-  document.getElementById("wifiPanel")?.classList.toggle("open", wifiOpen);
+function setBluetoothMenuOpen(open) {
+  btPanelOpen = open;
+  document.getElementById("btnBluetoothMenu")?.classList.toggle("selected", open);
+  document.getElementById("btPanel")?.classList.toggle("open", open);
 }
 
-function ensureConnectPanelOpen() {
-  if (!connectPanelOpen) {
-    connectPanelOpen = true;
-    document.getElementById("btnConnectAction")?.classList.add("selected");
-    document.getElementById("connectPanel")?.classList.add("open");
+function setWifiMenuOpen(open) {
+  wifiPanelOpen = open;
+  document.getElementById("btnWifiMenu")?.classList.toggle("selected", open);
+  document.getElementById("wifiPanel")?.classList.toggle("open", open);
+}
+
+function toggleBluetoothMenu(forceOpen) {
+  const next = forceOpen === true ? true : forceOpen === false ? false : !btPanelOpen;
+  if (next) {
+    setBluetoothMenuOpen(true);
+    setWifiMenuOpen(false);
+    renderBluetoothList();
+  } else {
+    setBluetoothMenuOpen(false);
   }
 }
 
-function toggleConnectPanel() {
-  connectPanelOpen = !connectPanelOpen;
-  document.getElementById("btnConnectAction")?.classList.toggle("selected", connectPanelOpen);
-  document.getElementById("connectPanel")?.classList.toggle("open", connectPanelOpen);
-  if (!connectPanelOpen) setConnectPanels(false, false);
+function toggleWifiMenu(forceOpen) {
+  const next = forceOpen === true ? true : forceOpen === false ? false : !wifiPanelOpen;
+  if (next) {
+    setWifiMenuOpen(true);
+    setBluetoothMenuOpen(false);
+    refreshWifiList();
+  } else {
+    setWifiMenuOpen(false);
+  }
 }
 
 function toggleTeamPanel() {
@@ -119,28 +128,6 @@ function toggleFriendPanel() {
   document.getElementById("btnFriendAction")?.classList.toggle("selected", friendPanelOpen);
   document.getElementById("friendPanel")?.classList.toggle("open", friendPanelOpen);
   if (friendPanelOpen) renderFriends();
-}
-
-function toggleBluetoothPanel(forceOpen) {
-  ensureConnectPanelOpen();
-  const next = forceOpen === true ? true : forceOpen === false ? false : !btPanelOpen;
-  if (next) {
-    setConnectPanels(true, false);
-    renderBluetoothList();
-  } else {
-    setConnectPanels(false, wifiPanelOpen);
-  }
-}
-
-function toggleWifiPanel(forceOpen) {
-  ensureConnectPanelOpen();
-  const next = forceOpen === true ? true : forceOpen === false ? false : !wifiPanelOpen;
-  if (next) {
-    setConnectPanels(false, true);
-    refreshWifiList();
-  } else {
-    setConnectPanels(btPanelOpen, false);
-  }
 }
 
 function toggleProfilePanel() {
@@ -882,15 +869,15 @@ async function logout() {
   isLoggedIn = false;
   stopTalk();
   closeMenu();
-  setConnectPanels(false, false);
+  setBluetoothMenuOpen(false);
+  setWifiMenuOpen(false);
   profilePanelOpen = false;
   friendPanelOpen = false;
-  connectPanelOpen = false;
   teamPanelOpen = false;
-  ["btnProfileAction", "btnFriendAction", "btnConnectAction", "btnTeamAction"].forEach((id) => {
+  ["btnProfileAction", "btnFriendAction", "btnBluetoothMenu", "btnWifiMenu", "btnTeamAction"].forEach((id) => {
     document.getElementById(id)?.classList.remove("selected");
   });
-  ["profilePanel", "friendPanel", "connectPanel", "teamPanel"].forEach((id) => {
+  ["profilePanel", "friendPanel", "teamPanel"].forEach((id) => {
     document.getElementById(id)?.classList.remove("open");
   });
   await disconnectBluetooth();
@@ -939,9 +926,8 @@ Object.assign(window, {
   toggleTheme,
   openMenu,
   closeMenu,
-  toggleBluetoothPanel,
-  toggleWifiPanel,
-  toggleConnectPanel,
+  toggleBluetoothMenu,
+  toggleWifiMenu,
   toggleTeamPanel,
   toggleFriendPanel,
   toggleProfilePanel,
