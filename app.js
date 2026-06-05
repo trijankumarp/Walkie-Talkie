@@ -1206,6 +1206,7 @@ async function signup() {
   const gender = document.getElementById("signupGender")?.value || "";
   const birthday = document.getElementById("signupBirthday")?.value || "";
   const address = document.getElementById("signupAddress")?.value.trim() || "";
+  const workAddress = document.getElementById("signupWorkAddress")?.value.trim() || "";
   const password = document.getElementById("signupPassword").value;
   const confirm = document.getElementById("signupConfirm").value;
 
@@ -1231,7 +1232,12 @@ async function signup() {
     const user = await window.mosAuth.signupEmail(firstName, lastName, email, password);
     saveUserNames(user.uid, firstName, lastName);
     saveMobileProfile(user.uid, country, mobile, false);
-    saveProfileExtra(user.uid, { gender, birthday, homeAddress: address });
+    saveProfileExtra(user.uid, {
+      gender,
+      birthday,
+      homeAddress: address,
+      ...(workAddress ? { workAddress } : {})
+    });
     alert("Account created! Check your email to verify (✓ will show in Settings).");
     showAuthTab("login");
     document.getElementById("loginEmail").value = email;
