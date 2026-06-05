@@ -66,10 +66,40 @@ let btPanelOpen = false;
 let wifiPanelOpen = false;
 let settingsPanelOpen = false;
 let friendPanelOpen = false;
-let teamPanelOpen = false;
+let channelPanelOpen = false;
 let friends = [];
 let selectedBtId = null;
 let savedBtDevices = [];
+
+function generateChannelId() {
+  return `CH-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+}
+
+function generateChannelFrequency() {
+  const base = 462.5625;
+  const step = 0.0125;
+  const slot = Math.floor(Math.random() * 14);
+  return (base + slot * step).toFixed(4);
+}
+
+function normalizeChannelRecord(ch) {
+  return {
+    id: ch.id,
+    name: (ch.name || "Channel").trim(),
+    channelId: ch.channelId || generateChannelId(),
+    frequency: String(ch.frequency || ch.freq || generateChannelFrequency())
+  };
+}
+
+function migrateChannels() {
+  let changed = false;
+  channels = channels.map((ch) => {
+    const next = normalizeChannelRecord(ch);
+    if (next.channelId !== ch.channelId || next.frequency !== ch.frequency) changed = true;
+    return next;
+  });
+  if (changed) saveChannels();
+}
 
 function loadChannels() {
   try {
@@ -79,6 +109,15 @@ function loadChannels() {
   } catch {
     channels = [];
   }
+  migrateChannels();
+}
+
+function getChannelMetaLine(ch) {
+  if (!ch) return "";
+  const freq = ch.frequency ? `${ch.frequency} MHz` : "";
+  const uid = ch.channelId || "";
+  if (freq && uid) return `${freq} · ${uid}`;
+  return freq || uid;
 }
 
 function saveChannels() {
@@ -94,13 +133,20 @@ function getActiveChannelName() {
   return ch ? ch.name : null;
 }
 
+function getActiveChannelTalkLabel() {
+  const ch = getActiveChannel();
+  if (!ch) return null;
+  const meta = getChannelMetaLine(ch);
+  return meta ? `${ch.name} · ${meta}` : ch.name;
+}
+
 function updatePttHint() {
   const hint = document.getElementById("pttHint");
   if (!hint) return;
-  const name = getActiveChannelName();
-  hint.textContent = name
-    ? `Hold the button to talk on ${name}`
-    : "Open menu (top left) to select or create a team";
+  const label = getActiveChannelTalkLabel();
+  hint.textContent = label
+    ? `Hold to talk on ${label}`
+    : "Open menu (top left) to select or create a channel";
 }
 
 function openMenu() {
@@ -166,11 +212,15 @@ function toggleWifiMenu(forceOpen) {
   }
 }
 
+function toggleChannelPanel() {
+  channelPanelOpen = !channelPanelOpen;
+  document.getElementById("btnChannelAction")?.classList.toggle("selected", channelPanelOpen);
+  document.getElementById("channelPanel")?.classList.toggle("open", channelPanelOpen);
+  if (channelPanelOpen) renderChannels();
+}
+
 function toggleTeamPanel() {
-  teamPanelOpen = !teamPanelOpen;
-  document.getElementById("btnTeamAction")?.classList.toggle("selected", teamPanelOpen);
-  document.getElementById("teamPanel")?.classList.toggle("open", teamPanelOpen);
-  if (teamPanelOpen) renderChannels();
+  toggleChannelPanel();
 }
 
 function toggleFriendPanel() {
@@ -1175,7 +1225,7 @@ function refreshStatusBar() {
   const ch = getActiveChannelName();
   el.innerHTML = ch
     ? `${loggedInUser.name} · <span class="accent">${ch}</span>`
-    : `${loggedInUser.name} · <span style="color:var(--text-faint)">Select a team in menu</span>`;
+    : `${loggedInUser.name} · <span style="color:var(--text-faint)">Select a channel in menu</span>`;
 }
 
 function buildLoggedInUser(user) {
@@ -1354,7 +1404,7 @@ function renderChannels() {
 
   if (channels.length === 0) {
     container.innerHTML =
-      '<div class="channel-empty">No teams yet.<br>Create one above.</div>';
+      '<div class="channel-empty">No channels yet.<br>Create one above.</div>';
     currentChannel = null;
     updatePttHint();
     return;
@@ -1369,7 +1419,10 @@ function renderChannels() {
     div.className = "channel-item" + (ch.id === currentChannel ? " active" : "");
 
     div.innerHTML = `
-      <span class="channel-name">${ch.name}</span>
+      <div class="channel-info">
+        <span class="channel-name">${escapeHtml(ch.name)}</span>
+        <span class="channel-meta">${escapeHtml(getChannelMetaLine(ch))}</span>
+      </div>
       <button type="button" class="delete-btn" title="Delete channel" aria-label="Delete channel" onclick="deleteChannel(${ch.id}); event.stopImmediatePropagation();">🗑</button>
     `;
 
@@ -1397,19 +1450,36 @@ function deleteChannel(id) {
   renderChannels();
 }
 
+function parseChannelFrequency(raw) {
+  const val = (raw || "").trim().replace(/mhz/gi, "").trim();
+  if (!val) return generateChannelFrequency();
+  const num = Number(val);
+  if (!Number.isFinite(num) || num <= 0) return generateChannelFrequency();
+  return num.toFixed(4);
+}
+
 function addNewChannel() {
   const input = document.getElementById("newChannelName");
-  const name = input.value.trim();
+  const freqInput = document.getElementById("newChannelFreq");
+  const name = input?.value.trim();
   if (!name) {
     alert("Please enter a channel name.");
     return;
   }
   const newId = channels.length ? Math.max(...channels.map((c) => c.id)) + 1 : 1;
-  channels.push({ id: newId, name });
+  const record = normalizeChannelRecord({
+    id: newId,
+    name,
+    channelId: generateChannelId(),
+    frequency: parseChannelFrequency(freqInput?.value)
+  });
+  channels.push(record);
   currentChannel = newId;
-  input.value = "";
+  if (input) input.value = "";
+  if (freqInput) freqInput.value = "";
   saveChannels();
   renderChannels();
+  updatePttHint();
 }
 
 function setBluetoothUi(connected, deviceName, deviceId) {
@@ -1610,7 +1680,7 @@ async function refreshWifiList() {
   if (!list) return;
   list.innerHTML = '<div class="pick-item warn">Scanning…</div>';
 
-  const channelName = getActiveChannelName() || "your team";
+  const channelName = getActiveChannelTalkLabel() || "your channel";
 
   if (window.windowsAPI?.scanWifiNetworks) {
     try {
@@ -1640,8 +1710,8 @@ async function refreshWifiList() {
 
   list.innerHTML = `
     <div class="pick-item warn">${escapeHtml(hint)}</div>
-    <div class="pick-item${selectedWifiName === "team-wifi" ? " active" : ""}" data-wifi="team-wifi">Same WiFi as team (tap to select)</div>
-    <div class="pick-item warn">Team channel: ${escapeHtml(channelName)}. Full list: Windows app.</div>
+    <div class="pick-item${selectedWifiName === "channel-wifi" ? " active" : ""}" data-wifi="channel-wifi">Same WiFi as channel (tap to select)</div>
+    <div class="pick-item warn">Channel: ${escapeHtml(channelName)}. Full list: Windows app.</div>
   `;
   list.querySelectorAll("[data-wifi]").forEach((el) => {
     el.addEventListener("click", () => selectWifiNetwork(el.getAttribute("data-wifi")));
@@ -1869,9 +1939,9 @@ function startTalk(e) {
   }
   isTalking = true;
   setPttVisual(true);
-  const ch = getActiveChannelName();
+  const ch = getActiveChannelTalkLabel() || getActiveChannelName();
   const el = document.getElementById("statusMain");
-  if (el) el.innerHTML = `<span class="accent">Live · ${ch}</span>`;
+  if (el) el.innerHTML = `<span class="accent">Live · ${escapeHtml(ch)}</span>`;
 }
 
 function stopTalk(e) {
@@ -1891,11 +1961,11 @@ async function logout() {
   settingsPanelOpen = false;
   closeSettingsEditor();
   friendPanelOpen = false;
-  teamPanelOpen = false;
-  ["btnSettingsAction", "btnFriendAction", "btnBluetoothMenu", "btnWifiMenu", "btnTeamAction"].forEach((id) => {
+  channelPanelOpen = false;
+  ["btnSettingsAction", "btnFriendAction", "btnBluetoothMenu", "btnWifiMenu", "btnChannelAction"].forEach((id) => {
     document.getElementById(id)?.classList.remove("selected");
   });
-  ["settingsPanel", "friendPanel", "teamPanel"].forEach((id) => {
+  ["settingsPanel", "friendPanel", "channelPanel"].forEach((id) => {
     document.getElementById(id)?.classList.remove("open");
   });
   await disconnectBluetooth();
@@ -1957,6 +2027,7 @@ Object.assign(window, {
   closeMenu,
   toggleBluetoothMenu,
   toggleWifiMenu,
+  toggleChannelPanel,
   toggleTeamPanel,
   toggleFriendPanel,
   toggleSettingsPanel,

@@ -196,7 +196,15 @@
       border-color: var(--text-muted);
       box-shadow: 0 0 0 2px var(--border);
     }
-    .channel-name { flex: 1; font-weight: 500; color: var(--text); }
+    .channel-info { flex: 1; min-width: 0; }
+    .channel-name { display: block; font-weight: 500; color: var(--text); }
+    .channel-meta {
+      display: block;
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 3px;
+      letter-spacing: 0.02em;
+    }
     .channel-empty {
       text-align: center;
       color: var(--text-faint);
@@ -255,6 +263,9 @@
     }
     .add-channel { display: flex; align-items: center; gap: 8px; margin: 12px 0; }
     .add-channel input { flex: 1; margin: 0; }
+    .channel-create { flex-direction: column; align-items: stretch; }
+    .channel-create-row { display: flex; gap: 8px; width: 100%; }
+    .channel-freq-input { width: 100%; box-sizing: border-box; margin: 0; }
     .add-symbol {
       flex-shrink: 0;
       width: 36px;
@@ -1187,7 +1198,7 @@
                 <span class="ptt-text" id="pttLabel">Hold to talk</span>
               </div>
             </div>
-            <p class="ptt-hint" id="pttHint">Open menu to select or create a team</p>
+            <p class="ptt-hint" id="pttHint">Open menu to select or create a channel</p>
           </div>
         </div>
         <div class="conn-chips">
@@ -1357,7 +1368,7 @@
       </button>
       <div id="wifiPanel" class="menu-panel">
         <div class="help-box" style="margin-bottom:8px;">
-          <strong>WiFi</strong> — tap your network below. All team members use the same WiFi + same team channel.
+          <strong>WiFi</strong> — tap your network below. Use the same WiFi + same channel ID to talk together.
         </div>
         <div id="wifiStatus" class="conn-line disconnected">Not connected</div>
         <div class="pick-list" id="wifiList"></div>
@@ -1365,19 +1376,23 @@
       </div>
     </div>
 
-    <!-- 5. Team -->
+    <!-- 5. Channel -->
     <div class="menu-block">
-      <button type="button" class="menu-theme-row" id="btnTeamAction" onclick="toggleTeamPanel()">
+      <button type="button" class="menu-theme-row" id="btnChannelAction" onclick="toggleChannelPanel()">
         <span class="menu-row-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9M19.1 4.9C23 8.8 23 15.1 19.1 19.1M8 12a4 4 0 0 1 8 0M12 2v2M12 20v2"/></svg>
         </span>
-        Team
+        Channel
       </button>
-      <div id="teamPanel" class="menu-panel">
-        <div class="add-channel">
-          <input type="text" id="newChannelName" placeholder="New team name" onkeydown="if(event.key==='Enter')addNewChannel()">
-          <button type="button" class="add-symbol" onclick="addNewChannel()" aria-label="Add team">+</button>
+      <div id="channelPanel" class="menu-panel">
+        <div class="add-channel channel-create">
+          <div class="channel-create-row">
+            <input type="text" id="newChannelName" placeholder="Channel name" onkeydown="if(event.key==='Enter')addNewChannel()">
+            <button type="button" class="add-symbol" onclick="addNewChannel()" aria-label="Add channel">+</button>
+          </div>
+          <input type="text" id="newChannelFreq" class="channel-freq-input" placeholder="Frequency MHz (optional, e.g. 462.5625)" inputmode="decimal">
         </div>
+        <p class="profile-hint" style="margin:0 0 8px;text-align:left;">Each channel gets a unique ID + frequency to talk on.</p>
         <div class="channel-list menu-channel-list" id="channelList"></div>
       </div>
     </div>
