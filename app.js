@@ -1521,10 +1521,6 @@ async function enterApp(user) {
   startChannelWifiSync();
   updateOnlineWalkieUi();
   if (!isOnlineWalkieMode()) maybeOpenBluetoothFirst();
-  else {
-    openMenu();
-    toggleChannelPanel();
-  }
 }
 
 window.onFirebaseUser = function (firebaseUser) {
