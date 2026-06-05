@@ -1499,6 +1499,7 @@ async function enterApp(user) {
   }
   loadFriends();
   loadBtDevices();
+  loadBtChannelCode();
   loadSelectedWifi();
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("mainUI").style.display = "block";
@@ -2714,6 +2715,7 @@ function boot() {
   loadChannels();
   loadFriends();
   loadBtDevices();
+  loadBtChannelCode();
   loadSelectedWifi();
   setBtStatus(false);
   setWifiStatus(false);
