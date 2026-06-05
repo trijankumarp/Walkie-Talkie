@@ -1738,8 +1738,9 @@ function updateOnlineWalkieUi() {
     }
   }
   const btChip = document.getElementById("btChip");
-  if (btChip && online) {
-    updateBtChip(isBluetoothReady(), btAudioDeviceLabel || (getActiveChannelName() ? "Headset optional" : null));
+  if (btChip && online && !isBluetoothReady()) {
+    btChip.textContent = "Bluetooth: Optional";
+    btChip.classList.remove("on");
   }
   if (channelPanelOpen) renderChannels();
   if (btPanelOpen) renderBluetoothList();
