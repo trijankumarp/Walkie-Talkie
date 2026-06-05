@@ -245,9 +245,10 @@ function renderSettingsList() {
     firstName = parsed.firstName;
     lastName = parsed.lastName;
   }
-  const normalized = normalizeNameFields(firstName, lastName);
   const fullName =
-    `${normalized.firstName} ${normalized.lastName}`.trim() || loggedInUser.name || "Not set";
+    `${(firstName || "").trim()} ${(lastName || "").trim()}`.trim().replace(/\s+/g, " ") ||
+    loggedInUser.name ||
+    "Not set";
 
   syncAllProfileAvatars();
 
@@ -299,112 +300,21 @@ function renderSettingsList() {
   setVal("settingsBioValue", bioOn ? "On" : "Off");
 }
 
-function stripSpacesFromFirstName(value) {
-  return (value || "").replace(/\s+/g, "");
-}
-
 function normalizeNameFields(firstName, lastName) {
-  let first = (firstName || "").trim();
-  let last = (lastName || "").trim();
-  if (/\s/.test(first)) {
-    const parts = first.split(/\s+/).filter(Boolean);
-    first = parts[0] || "";
-    const extra = parts.slice(1).join(" ");
-    last = [extra, last].filter(Boolean).join(" ").trim();
-  }
-  first = stripSpacesFromFirstName(first);
-  return { firstName: first, lastName: last };
+  const collapse = (s) => (s || "").trim().replace(/\s+/g, " ");
+  return {
+    firstName: collapse(firstName),
+    lastName: collapse(lastName)
+  };
 }
 
-function sanitizeFirstNameInput(elOrId) {
-  const el = typeof elOrId === "string" ? document.getElementById(elOrId) : elOrId;
-  if (!el) return "";
-  const cleaned = stripSpacesFromFirstName(el.value);
-  if (el.value !== cleaned) el.value = cleaned;
-  return cleaned;
-}
-
-function getLastNameInputForFirst(firstEl) {
-  if (!firstEl) return null;
-  if (firstEl.id === "profileFirstName") return document.getElementById("profileLastName");
-  if (firstEl.id === "signupFirstName") return document.getElementById("signupLastName");
+function validateFirstName(firstName) {
+  if (!(firstName || "").trim()) return "Please enter first name.";
   return null;
-}
-
-function focusLastNameWithSpace(lastEl) {
-  if (!lastEl) return;
-  requestAnimationFrame(() => {
-    try {
-      lastEl.focus({ preventScroll: false });
-    } catch {
-      lastEl.focus();
-    }
-    const pos = lastEl.selectionStart ?? lastEl.value.length;
-    const val = lastEl.value;
-    if (!val.length) {
-      lastEl.setSelectionRange(0, 0);
-      return;
-    }
-    if (val[pos - 1] !== " ") {
-      lastEl.value = `${val.slice(0, pos)} ${val.slice(pos)}`;
-      lastEl.setSelectionRange(pos + 1, pos + 1);
-    } else {
-      lastEl.setSelectionRange(pos, pos);
-    }
-  });
 }
 
 function isSpaceKey(e) {
   return e.key === " " || e.code === "Space" || e.key === "Spacebar";
-}
-
-function splitPastedNameIntoFields(firstEl, text) {
-  const parts = (text || "").trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return;
-  const lastEl = getLastNameInputForFirst(firstEl);
-  firstEl.value = parts[0];
-  sanitizeFirstNameInput(firstEl);
-  if (!lastEl) return;
-  const rest = parts.slice(1).join(" ");
-  if (!rest) {
-    focusLastNameWithSpace(lastEl);
-    return;
-  }
-  const cur = lastEl.value.trim();
-  lastEl.value = cur ? `${cur} ${rest}` : rest;
-  lastEl.focus();
-  lastEl.setSelectionRange(lastEl.value.length, lastEl.value.length);
-}
-
-function bindFirstNameField(...ids) {
-  ids.forEach((id) => {
-    const el = document.getElementById(id);
-    if (!el || el.dataset.firstNameBound) return;
-    el.dataset.firstNameBound = "1";
-    el.setAttribute("autocomplete", "off");
-    el.setAttribute("spellcheck", "false");
-    el.addEventListener("keydown", (e) => {
-      if (!isSpaceKey(e)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      sanitizeFirstNameInput(el);
-      focusLastNameWithSpace(getLastNameInputForFirst(el));
-    });
-    el.addEventListener("input", () => sanitizeFirstNameInput(el));
-    el.addEventListener("paste", (e) => {
-      const text = e.clipboardData?.getData("text") || "";
-      if (!/\s/.test(text)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      splitPastedNameIntoFields(el, text);
-    });
-  });
-}
-
-function validateFirstName(firstName) {
-  if (!firstName) return "Please enter first name.";
-  if (/\s/.test(firstName)) return "First name cannot contain spaces.";
-  return null;
 }
 
 function getSettingsExpandEl(key) {
@@ -455,9 +365,6 @@ function toggleSettingsEditor(key) {
   row?.classList.add("expanded");
 
   fillProfileForm();
-  if (key === "name") {
-    bindFirstNameField("profileFirstName");
-  }
   if (key === "delete") setupDeleteAccountEditor();
   if (key === "permissions") renderAppPermissions();
   if (key === "photo") {
@@ -509,10 +416,9 @@ function buildSettingsEditorHtml(key) {
     name: `
       <div class="name-edit-panel">
         <label class="profile-label">First name</label>
-        <input type="text" id="profileFirstName" class="profile-input" placeholder="First name" autocomplete="off" spellcheck="false" inputmode="text">
-        <p class="profile-hint" style="margin:-4px 0 10px;">First name: one word only. Press <strong>Space</strong> → cursor goes to Last name (use space there for Kumar Puvvada).</p>
+        <input type="text" id="profileFirstName" class="profile-input" placeholder="First name (e.g. Trijan Kumar)" autocomplete="given-name">
         <label class="profile-label">Last name</label>
-        <input type="text" id="profileLastName" class="profile-input" placeholder="Last name (e.g. Kumar Puvvada)" autocomplete="family-name">
+        <input type="text" id="profileLastName" class="profile-input" placeholder="Last name (e.g. Puvvada)" autocomplete="family-name">
         <div class="name-visibility">
           <p class="name-visibility-title">Who can see your name</p>
           <p class="name-visibility-text">Anyone you connect with on Walkie Talkie can see this name.</p>
@@ -1085,12 +991,6 @@ function fillProfileForm() {
     names.lastName = parsed.lastName;
   }
   const normalized = normalizeNameFields(names.firstName, names.lastName);
-  if (
-    uid &&
-    (normalized.firstName !== names.firstName || normalized.lastName !== names.lastName)
-  ) {
-    saveUserNames(uid, normalized.firstName, normalized.lastName);
-  }
 
   if (first) first.value = normalized.firstName || "";
   if (last) last.value = normalized.lastName || "";
@@ -1997,7 +1897,6 @@ function boot() {
   initTheme();
   initCountrySelect();
   initSignupFields();
-  bindFirstNameField("signupFirstName");
   initAvatarPickers();
   loadChannels();
   loadFriends();
@@ -2046,7 +1945,6 @@ Object.assign(window, {
   toggleSettingsPanel,
   toggleSettingsEditor,
   closeSettingsEditor,
-  sanitizeFirstNameInput,
   cancelNameEdit,
   confirmDeleteAccount,
   pickAvatarGallery,
