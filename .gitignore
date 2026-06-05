@@ -1,0 +1,9 @@
+# Firebase secrets (use firebase-config.example.js in repo)
+firebase-config.js
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/

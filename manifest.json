@@ -1,0 +1,22 @@
+{
+  "name": "M-OS Walkie Talkie",
+  "short_name": "M-OS Walkie",
+  "description": "Offline Bluetooth/WiFi Walkie for Team Communication - M-OS Project",
+  "start_url": "walkie.html",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#00cc66",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192x192/00cc66/ffffff?text=MS",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://via.placeholder.com/512x512/00cc66/ffffff?text=MS",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

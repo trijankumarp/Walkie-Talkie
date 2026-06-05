@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>M-OS Walkie</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#00cc66">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+    body { 
+      font-family: 'Inter', system-ui, sans-serif; 
+      background: #0a0a0a; 
+      color: #e0e0e0; 
+      margin:0; 
+      padding:0; 
+    }
+    .container { 
+      max-width: 420px; 
+      margin: 0 auto; 
+      padding: 16px; 
+      background: #111; 
+      min-height: 100vh; 
+    }
+    header { 
+      text-align: center; 
+      padding: 20px 0; 
+      background: #1a1a1a; 
+      border-radius: 12px; 
+      margin-bottom: 20px;
+    }
+    h1 { 
+      margin: 0; 
+      font-size: 28px; 
+      font-weight: 600; 
+      color: #00ff88; 
+      letter-spacing: 1px;
+    }
+    .status { 
+      padding: 12px; 
+      background: #1f1f1f; 
+      border-radius: 8px; 
+      text-align: center; 
+      font-size: 15px; 
+      margin-bottom: 16px;
+    }
+    .btn { 
+      display: block; 
+      width: 100%; 
+      padding: 16px; 
+      margin: 12px 0; 
+      background: #00cc66; 
+      color: white; 
+      border: none; 
+      font-size: 17px; 
+      font-weight: 600; 
+      border-radius: 10px; 
+      cursor: pointer; 
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #00ff88; }
+    .btn:active { transform: scale(0.97); background: #00aa55; }
+
+    .list, .channel-list { 
+      background: #1a1a1a; 
+      padding: 12px; 
+      margin: 12px 0; 
+      border-radius: 10px; 
+      max-height: 200px; 
+      overflow-y: auto; 
+    }
+    .channel-item { 
+      display: flex; 
+      justify-content: space-between; 
+      align-items: center;
+      padding: 14px; 
+      background: #252525; 
+      margin: 8px 0; 
+      border-radius: 8px; 
+      cursor: pointer; 
+      transition: all 0.2s;
+    }
+    .channel-item:hover { background: #333; }
+    .channel-name { flex: 1; font-weight: 500; }
+    .delete-btn { 
+      background: #ff4444; 
+      color: white; 
+      border: none; 
+      padding: 6px 12px; 
+      border-radius: 6px; 
+      font-size: 14px; 
+      cursor: pointer; 
+    }
+    .delete-btn:active { background: #ff6666; }
+
+    .item { 
+      padding: 12px; 
+      background: #252525; 
+      margin: 6px 0; 
+      border-radius: 8px; 
+      cursor: pointer; 
+    }
+    input { 
+      width: 100%; 
+      padding: 14px; 
+      margin: 8px 0; 
+      background: #1f1f1f; 
+      color: #e0e0e0; 
+      border: 1px solid #00cc66; 
+      border-radius: 8px; 
+      font-size: 16px; 
+      box-sizing: border-box;
+    }
+    .add-channel { 
+      display: flex; 
+      gap: 10px; 
+      margin: 12px 0; 
+    }
+    .ptt { 
+      height: 140px; 
+      width: 140px; 
+      background: linear-gradient(145deg, #cc0000, #990000); 
+      color: white; 
+      font-size: 19px; 
+      font-weight: 700; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      border-radius: 50%; 
+      margin: 30px auto; 
+      box-shadow: 0 10px 30px rgba(204, 0, 0, 0.4);
+      transition: all 0.1s;
+      user-select: none;
+    }
+    .ptt:active { 
+      background: linear-gradient(145deg, #00cc66, #009955); 
+      transform: scale(0.95); 
+      box-shadow: 0 5px 15px rgba(0, 204, 102, 0.5);
+    }
+    .section-title {
+      color: #00ff88;
+      margin: 20px 0 8px;
+      font-size: 17px;
+      font-weight: 600;
+    }
+    .auth-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .auth-tab {
+      flex: 1;
+      padding: 12px;
+      background: #1f1f1f;
+      color: #888;
+      border: 1px solid #333;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .auth-tab.active {
+      background: #00cc66;
+      color: #fff;
+      border-color: #00cc66;
+    }
+    .auth-panel { display: none; }
+    .auth-panel.active { display: block; }
+    .field-label {
+      display: block;
+      font-size: 13px;
+      color: #888;
+      margin: 12px 0 4px;
+    }
+    .auth-hint {
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+      margin-top: 8px;
+    }
+    .auth-error {
+      color: #ff6666;
+      font-size: 13px;
+      text-align: center;
+      margin: 8px 0;
+      min-height: 18px;
+    }
+    .btn-google {
+      background: #fff;
+      color: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    .btn-google:hover { background: #f0f0f0; }
+    .btn-secondary {
+      background: transparent;
+      color: #00cc66;
+      border: 1px solid #00cc66;
+    }
+    .btn-secondary:hover { background: #1a2a1f; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>M-OS WALKIE</h1>
+      <div id="status" class="status">Offline • Ready</div>
+    </header>
+
+    <!-- Login / Sign Up -->
+    <div id="loginScreen">
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" id="tabLogin" onclick="showAuthTab('login')">Login</button>
+        <button type="button" class="auth-tab" id="tabSignup" onclick="showAuthTab('signup')">Sign Up</button>
+      </div>
+
+      <div id="authError" class="auth-error"></div>
+
+      <!-- Login -->
+      <div id="panelLogin" class="auth-panel active">
+        <h2 style="text-align:center; color:#00ff88; margin-top:0;">Login</h2>
+        <label class="field-label" for="loginEmail">Gmail / Email Address</label>
+        <input type="email" id="loginEmail" placeholder="you@gmail.com" autocomplete="email">
+        <label class="field-label" for="loginPassword">Password</label>
+        <input type="password" id="loginPassword" placeholder="Enter password" autocomplete="current-password">
+        <button class="btn" id="btnLogin" onclick="login()">LOGIN</button>
+        <button type="button" class="btn btn-google" id="btnGoogle" onclick="loginWithGoogle()">
+          <span>G</span> Continue with Google
+        </button>
+        <p class="auth-hint">Use your Gmail or any email address to sign in</p>
+      </div>
+
+      <!-- Sign Up -->
+      <div id="panelSignup" class="auth-panel">
+        <h2 style="text-align:center; color:#00ff88; margin-top:0;">Sign Up</h2>
+        <label class="field-label" for="signupName">Full Name</label>
+        <input type="text" id="signupName" placeholder="Your name" autocomplete="name">
+        <label class="field-label" for="signupEmail">Gmail / Email Address</label>
+        <input type="email" id="signupEmail" placeholder="you@gmail.com" autocomplete="email">
+        <label class="field-label" for="signupMobile">Mobile (optional)</label>
+        <input type="tel" id="signupMobile" placeholder="10-digit mobile number" autocomplete="tel">
+        <label class="field-label" for="signupPassword">Password</label>
+        <input type="password" id="signupPassword" placeholder="Min 6 characters" autocomplete="new-password">
+        <label class="field-label" for="signupConfirm">Confirm Password</label>
+        <input type="password" id="signupConfirm" placeholder="Re-enter password" autocomplete="new-password">
+        <button class="btn" id="btnSignup" onclick="signup()">CREATE ACCOUNT</button>
+        <button type="button" class="btn btn-secondary" onclick="showAuthTab('login')">Already have account? Login</button>
+      </div>
+    </div>
+
+    <!-- Main UI -->
+    <div id="mainUI" style="display:none;">
+      <button class="btn" onclick="scanBluetooth()">1. Bluetooth Devices Scan</button>
+      <div class="list" id="btList">Bluetooth devices will appear here...</div>
+
+      <button class="btn" onclick="scanWiFi()">2. WiFi / Direct Scan</button>
+      <div class="list" id="wifiList">WiFi devices will appear here...</div>
+
+      <div class="status" id="connStatus">No Connection</div>
+
+      <div class="section-title">Channels</div>
+      
+      <!-- Add New Channel -->
+      <div class="add-channel">
+        <input type="text" id="newChannelName" placeholder="New Channel Name (e.g. Team B)">
+        <button class="btn" style="width:auto; padding:14px 24px;" onclick="addNewChannel()">+ ADD</button>
+      </div>
+
+      <div class="channel-list" id="channelList"></div>
+
+      <button class="btn" onclick="toggleMute()">3. Mute / Unmute</button>
+      <div id="muteStatus" style="text-align:center; color:#ffcc00; font-weight:500; margin:8px 0;">🔊 Unmuted</div>
+
+      <!-- Professional PTT -->
+      <div class="ptt" id="pttBtn" 
+           onmousedown="startTalk()" 
+           onmouseup="stopTalk()" 
+           ontouchstart="startTalk()" 
+           ontouchend="stopTalk()">
+        PRESS TO TALK
+      </div>
+
+      <button class="btn" style="background:#444;" onclick="logout()">LOGOUT</button>
+    </div>
+  </div>
+
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="auth.js"></script>
+  <script>
+    let isLoggedIn = false;
+    let isMuted = false;
+    let currentChannel = 1;
+    let channels = [
+      { id: 1, name: "Channel 1 - Team A" },
+      { id: 2, name: "Channel 2 - Workers" },
+      { id: 3, name: "Channel 3 - SOS" }
+    ];
+
+    function isValidEmail(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    function setAuthError(msg) {
+      document.getElementById('authError').textContent = msg || '';
+    }
+
+    function setAuthLoading(loading) {
+      ['btnLogin', 'btnSignup', 'btnGoogle'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = loading;
+      });
+    }
+
+    function requireFirebase() {
+      if (!window.mosAuth?.isConfigured()) {
+        setAuthError('Firebase not set up. Copy firebase-config.example.js → firebase-config.js and add your keys.');
+        return false;
+      }
+      return true;
+    }
+
+    function showAuthTab(tab) {
+      setAuthError('');
+      const isLogin = tab === 'login';
+      document.getElementById('tabLogin').classList.toggle('active', isLogin);
+      document.getElementById('tabSignup').classList.toggle('active', !isLogin);
+      document.getElementById('panelLogin').classList.toggle('active', isLogin);
+      document.getElementById('panelSignup').classList.toggle('active', !isLogin);
+    }
+
+    function enterApp(user) {
+      isLoggedIn = true;
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('mainUI').style.display = 'block';
+      document.getElementById('status').innerHTML = `Logged in as <strong>${user.name}</strong><br><span style="font-size:13px;color:#888">${user.email}</span>`;
+      renderChannels();
+    }
+
+    window.onFirebaseUser = function (firebaseUser) {
+      if (!firebaseUser || isLoggedIn) return;
+      enterApp({
+        name: firebaseUser.displayName || firebaseUser.email.split('@')[0],
+        email: firebaseUser.email
+      });
+    };
+
+    async function signup() {
+      if (!requireFirebase()) return;
+      const name = document.getElementById('signupName').value.trim();
+      const email = document.getElementById('signupEmail').value.trim().toLowerCase();
+      const password = document.getElementById('signupPassword').value;
+      const confirm = document.getElementById('signupConfirm').value;
+
+      if (!name) return setAuthError('Please enter your full name.');
+      if (!email) return setAuthError('Please enter Gmail or email address.');
+      if (!isValidEmail(email)) return setAuthError('Enter a valid email (e.g. you@gmail.com).');
+      if (password.length < 6) return setAuthError('Password must be at least 6 characters.');
+      if (password !== confirm) return setAuthError('Passwords do not match.');
+
+      setAuthLoading(true);
+      setAuthError('');
+      try {
+        await window.mosAuth.signupEmail(name, email, password);
+        alert('Account created successfully!');
+        showAuthTab('login');
+        document.getElementById('loginEmail').value = email;
+      } catch (err) {
+        setAuthError(window.mosAuth.mapError(err));
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+
+    async function login() {
+      if (!requireFirebase()) return;
+      const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+      const password = document.getElementById('loginPassword').value;
+
+      if (!email) return setAuthError('Please enter Gmail or email address.');
+      if (!isValidEmail(email)) return setAuthError('Enter a valid email address.');
+      if (!password) return setAuthError('Please enter your password.');
+
+      setAuthLoading(true);
+      setAuthError('');
+      try {
+        const user = await window.mosAuth.loginEmail(email, password);
+        enterApp({
+          name: user.displayName || user.email.split('@')[0],
+          email: user.email
+        });
+      } catch (err) {
+        setAuthError(window.mosAuth.mapError(err));
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+
+    async function loginWithGoogle() {
+      if (!requireFirebase()) return;
+      setAuthLoading(true);
+      setAuthError('');
+      try {
+        const user = await window.mosAuth.loginGoogle();
+        enterApp({
+          name: user.displayName || user.email.split('@')[0],
+          email: user.email
+        });
+      } catch (err) {
+        setAuthError(window.mosAuth.mapError(err));
+      } finally {
+        setAuthLoading(false);
+      }
+    }
+
+    function renderChannels() {
+      const container = document.getElementById('channelList');
+      container.innerHTML = '';
+      channels.forEach(ch => {
+        const div = document.createElement('div');
+        div.className = 'channel-item';
+        
+        div.innerHTML = `
+          <span class="channel-name">${ch.name}</span>
+          <button class="delete-btn" onclick="deleteChannel(${ch.id}); event.stopImmediatePropagation();">Delete</button>
+        `;
+        
+        div.onclick = (e) => {
+          if (e.target.classList.contains('delete-btn')) return;
+          currentChannel = ch.id;
+          document.getElementById('status').innerHTML = `Active: <strong>${ch.name}</strong>`;
+        };
+        
+        container.appendChild(div);
+      });
+    }
+
+    function deleteChannel(id) {
+      if (confirm(`Delete this channel?`)) {
+        channels = channels.filter(ch => ch.id !== id);
+        if (currentChannel === id && channels.length > 0) {
+          currentChannel = channels[0].id;
+        }
+        renderChannels();
+      }
+    }
+
+    function addNewChannel() {
+      const input = document.getElementById('newChannelName');
+      const name = input.value.trim();
+      if (!name) {
+        alert("Please enter channel name!");
+        return;
+      }
+      const newId = Math.max(0, ...channels.map(c => c.id)) + 1;
+      channels.push({ id: newId, name: name });
+      input.value = '';
+      renderChannels();
+    }
+
+    async function scanBluetooth() {
+      const list = document.getElementById('btList');
+      list.innerHTML = "Scanning for Bluetooth devices...";
+
+      try {
+        if (!navigator.bluetooth) {
+          list.innerHTML = "Bluetooth not supported in this browser. Use Chrome on Android.";
+          return;
+        }
+
+        const device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: ['battery_service']
+        });
+
+        list.innerHTML = `<div class="item">✅ Connected: ${device.name || 'Unknown Device'}</div>`;
+        document.getElementById('connStatus').innerHTML = `Bluetooth Connected: ${device.name || 'Device'}`;
+        document.getElementById('connStatus').style.color = "#00ff88";
+
+      } catch (err) {
+        list.innerHTML = "Scan failed or permission denied.";
+      }
+    }
+
+    function scanWiFi() {
+      const list = document.getElementById('wifiList');
+      list.innerHTML = `
+        <div class="item">WiFi Direct / Local Network (Limited support)</div>
+        <div class="item">Full scan not available in browser</div>
+        <div class="item">Connect devices manually on same network</div>
+      `;
+      document.getElementById('connStatus').innerHTML = "WiFi Direct - Limited";
+    }
+
+    function toggleMute() {
+      isMuted = !isMuted;
+      const el = document.getElementById('muteStatus');
+      el.innerHTML = isMuted ? "🔇 Muted" : "🔊 Unmuted";
+      el.style.color = isMuted ? "#ff4444" : "#ffcc00";
+    }
+
+    function startTalk() {
+      if (isMuted) return;
+      document.getElementById('pttBtn').style.background = 'linear-gradient(145deg, #00cc66, #009955)';
+      const activeCh = channels.find(c => c.id === currentChannel);
+      document.getElementById('status').innerHTML = `📢 TRANSMITTING → ${activeCh ? activeCh.name : 'Channel'}`;
+    }
+
+    function stopTalk() {
+      document.getElementById('pttBtn').style.background = 'linear-gradient(145deg, #cc0000, #990000)';
+      document.getElementById('status').innerHTML = `Listening on active channel...`;
+    }
+
+    async function logout() {
+      isLoggedIn = false;
+      try {
+        await window.mosAuth.logout();
+      } catch { /* ignore */ }
+      document.getElementById('mainUI').style.display = 'none';
+      document.getElementById('loginScreen').style.display = 'block';
+      showAuthTab('login');
+      setAuthError('');
+    }
+
+    if (!window.mosAuth?.isConfigured()) {
+      setAuthError('Add Firebase keys in firebase-config.js to enable real login.');
+    }
+
+    // Keyboard PTT
+    document.addEventListener('keydown', e => { 
+      if (e.key === ' ' && isLoggedIn && !isMuted) startTalk(); 
+    });
+    document.addEventListener('keyup', e => { 
+      if (e.key === ' ') stopTalk(); 
+    });
+  </script>
+</body>
+</html>
