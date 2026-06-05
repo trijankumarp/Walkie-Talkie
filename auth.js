@@ -22,6 +22,8 @@ import {
   deleteUser,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+import { getDatabase } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
 
 const OTP_PENDING_KEY = "walkie_otp_pending_v1";
 let recaptchaVerifier = null;
@@ -51,6 +53,8 @@ const ERROR_MAP = {
 };
 
 let auth = null;
+let firestoreDb = null;
+let realtimeDb = null;
 
 function isConfigured() {
   const c = window.FIREBASE_CONFIG;
@@ -72,6 +76,18 @@ function init() {
 
   const app = initializeApp(window.FIREBASE_CONFIG);
   auth = getAuth(app);
+  try {
+    firestoreDb = getFirestore(app);
+  } catch {
+    firestoreDb = null;
+  }
+  if (window.FIREBASE_CONFIG.databaseURL) {
+    try {
+      realtimeDb = getDatabase(app);
+    } catch {
+      realtimeDb = null;
+    }
+  }
 
   if (window.FIREBASE_CONFIG.measurementId) {
     try {
@@ -298,6 +314,8 @@ init();
 
 window.mosAuth = {
   isConfigured,
+  getFirestore: () => firestoreDb,
+  getRealtimeDb: () => realtimeDb,
   mapError,
   loginEmail,
   signupEmail,

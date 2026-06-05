@@ -9,5 +9,6 @@ window.FIREBASE_CONFIG = {
   storageBucket: "walkietalkie-mos.firebasestorage.app",
   messagingSenderId: "905289525416",
   appId: "YOUR_APP_ID",
-  measurementId: "G-H97RRNDT3E"
+  measurementId: "G-H97RRNDT3E",
+  databaseURL: "https://walkietalkie-mos-default-rtdb.firebaseio.com"
 };

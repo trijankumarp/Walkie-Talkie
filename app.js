@@ -1,14 +1,14 @@
-import { getApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 import {
-  getFirestore,
   collection,
   query,
   where,
   getDocs,
   setDoc,
   doc,
-  serverTimestamp
+  serverTimestamp,
+  limit
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+import { ref, set, onValue, off } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
 
 const CHANNELS_KEY = "walkie_channels_v1";
 const PUBLIC_CHANNELS_COLLECTION = "publicChannels";
@@ -89,7 +89,9 @@ let nearbyLoading = false;
 let nearbySearchError = "";
 let nearbyRefreshTimer = null;
 let channelHeartbeatTimer = null;
-let channelDb = null;
+let channelSyncBackend = null;
+let nearbyRtdbRef = null;
+let channelShareOk = false;
 
 function generateChannelId() {
   return `CH-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -1290,10 +1292,10 @@ function enterApp(user) {
   updatePttHint();
   updateMenuAvatar();
   renderSettingsList();
+  ensureWifiForDiscovery();
   if (selectedWifiName) setWifiStatus(true, selectedWifiName);
   renderBluetoothList();
   startChannelWifiSync();
-  refreshNearbyChannels();
 }
 
 window.onFirebaseUser = function (firebaseUser) {
@@ -1436,21 +1438,159 @@ function getWifiDiscoveryKey() {
   return n.toLowerCase();
 }
 
-function getChannelDb() {
-  if (channelDb) return channelDb;
-  if (!window.mosAuth?.isConfigured?.()) return null;
-  try {
-    channelDb = getFirestore(getApp());
-    return channelDb;
-  } catch {
-    return null;
-  }
+function getFirestoreDb() {
+  return window.mosAuth?.getFirestore?.() || null;
+}
+
+function getRealtimeDb() {
+  return window.mosAuth?.getRealtimeDb?.() || null;
 }
 
 function channelDocIsFresh(data) {
-  const ts = data.updatedAt?.toMillis?.();
+  const ts = data.updatedAt?.toMillis?.() ?? data.updatedAt;
   if (!ts) return true;
-  return Date.now() - ts < CHANNEL_STALE_MS;
+  return Date.now() - Number(ts) < CHANNEL_STALE_MS;
+}
+
+function mapSyncError(err) {
+  const msg = String(err?.message || "");
+  if (err?.code === "permission-denied" || msg.includes("PERMISSION_DENIED")) {
+    return (
+      'Database rules blocked access. In Firebase Console open <a href="https://console.firebase.google.com/project/walkietalkie-mos/database" target="_blank" rel="noopener">Realtime Database</a>, create the database if needed, then paste rules from <code>database.rules.json</code> in this project and Publish.'
+    );
+  }
+  if (msg.includes("not been used") || msg.includes("SERVICE_DISABLED")) {
+    return (
+      'Cloud sync is off. Open <a href="https://console.firebase.google.com/project/walkietalkie-mos/database" target="_blank" rel="noopener">Firebase → Realtime Database</a>, click <strong>Create Database</strong>, then Publish rules from <code>database.rules.json</code>.'
+    );
+  }
+  return "Could not load nearby channels. Check internet and try again.";
+}
+
+async function resolveChannelSyncBackend() {
+  if (channelSyncBackend) return channelSyncBackend;
+  const fs = getFirestoreDb();
+  if (fs) {
+    try {
+      await getDocs(query(collection(fs, PUBLIC_CHANNELS_COLLECTION), limit(1)));
+      channelSyncBackend = "firestore";
+      return channelSyncBackend;
+    } catch (err) {
+      console.warn("Firestore unavailable, using Realtime Database", err);
+    }
+  }
+  if (getRealtimeDb()) {
+    channelSyncBackend = "rtdb";
+    return channelSyncBackend;
+  }
+  channelSyncBackend = "none";
+  return channelSyncBackend;
+}
+
+function buildChannelPayload(ch) {
+  const wifiKey = getWifiDiscoveryKey();
+  if (!wifiKey || !loggedInUser || !ch?.channelId) return null;
+  return {
+    name: ch.name,
+    frequency: ch.frequency,
+    channelId: ch.channelId,
+    wifiKey,
+    ownerUid: loggedInUser.uid,
+    ownerName: loggedInUser.name || "User",
+    updatedAt: Date.now()
+  };
+}
+
+async function publishChannelRecord(ch) {
+  const payload = buildChannelPayload(ch);
+  if (!payload) return false;
+  const backend = await resolveChannelSyncBackend();
+  try {
+    if (backend === "firestore") {
+      const fs = getFirestoreDb();
+      await setDoc(
+        doc(fs, PUBLIC_CHANNELS_COLLECTION, ch.channelId),
+        { ...payload, updatedAt: serverTimestamp() },
+        { merge: true }
+      );
+      channelShareOk = true;
+      return true;
+    }
+    if (backend === "rtdb") {
+      const rtdb = getRealtimeDb();
+      await set(ref(rtdb, `${PUBLIC_CHANNELS_COLLECTION}/${ch.channelId}`), payload);
+      channelShareOk = true;
+      return true;
+    }
+  } catch (err) {
+    console.warn("Channel publish failed", err);
+    channelShareOk = false;
+    nearbySearchError = mapSyncError(err);
+  }
+  return false;
+}
+
+async function publishAllChannelsToWifi() {
+  if (!getWifiDiscoveryKey() || !loggedInUser) return;
+  const list = channels.length ? channels : getActiveChannel() ? [getActiveChannel()] : [];
+  for (const ch of list) {
+    await publishChannelRecord(ch);
+  }
+}
+
+function ensureWifiForDiscovery() {
+  if (selectedWifiName) return;
+  selectedWifiName = "channel-wifi";
+  localStorage.setItem(WIFI_SEL_KEY, "channel-wifi");
+  setWifiStatus(true, "Same WiFi as channel");
+}
+
+function parseNearbySnapshotEntries(entries) {
+  const list = [];
+  for (const item of entries) {
+    const data = item.data;
+    if (!channelDocIsFresh(data)) continue;
+    const channelId = data.channelId || item.id;
+    if (getLocalChannelByPublicId(channelId)) continue;
+    list.push({
+      name: data.name || "Channel",
+      channelId,
+      frequency: String(data.frequency || ""),
+      ownerName: data.ownerName || ""
+    });
+  }
+  list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
+  nearbyChannels = list;
+}
+
+function stopNearbyListener() {
+  if (nearbyRtdbRef) {
+    off(nearbyRtdbRef);
+    nearbyRtdbRef = null;
+  }
+}
+
+function startNearbyRtdbListener(wifiKey) {
+  const rtdb = getRealtimeDb();
+  if (!rtdb || !wifiKey) return;
+  stopNearbyListener();
+  nearbyRtdbRef = ref(rtdb, PUBLIC_CHANNELS_COLLECTION);
+  onValue(nearbyRtdbRef, (snap) => {
+    const entries = [];
+    snap.forEach((child) => {
+      const data = child.val();
+      if (!data || data.wifiKey !== wifiKey) return;
+      entries.push({ id: child.key, data });
+    });
+    parseNearbySnapshotEntries(entries);
+    nearbyLoading = false;
+    if (channelPanelOpen) renderChannels();
+  }, (err) => {
+    console.warn("RTDB listener failed", err);
+    nearbySearchError = mapSyncError(err);
+    nearbyLoading = false;
+    if (channelPanelOpen) renderChannels();
+  });
 }
 
 function getLocalChannelByPublicId(publicId) {
@@ -1474,72 +1614,59 @@ function filterChannels() {
 }
 
 async function publishActiveChannelToWifi() {
-  const db = getChannelDb();
-  const wifiKey = getWifiDiscoveryKey();
-  if (!db || !wifiKey || !loggedInUser) return;
   const ch = getActiveChannel();
-  if (!ch?.channelId) return;
-  try {
-    await setDoc(
-      doc(db, PUBLIC_CHANNELS_COLLECTION, ch.channelId),
-      {
-        name: ch.name,
-        frequency: ch.frequency,
-        channelId: ch.channelId,
-        wifiKey,
-        ownerUid: loggedInUser.uid,
-        ownerName: loggedInUser.name || "User",
-        updatedAt: serverTimestamp()
-      },
-      { merge: true }
-    );
-  } catch (err) {
-    console.warn("Channel publish failed", err);
-  }
+  if (!ch) return;
+  await publishChannelRecord(ch);
 }
 
 async function refreshNearbyChannels() {
   const wifiKey = getWifiDiscoveryKey();
   if (!wifiKey || !isLoggedIn) {
+    stopNearbyListener();
     nearbyChannels = [];
     nearbyLoading = false;
     nearbySearchError = "";
     if (channelPanelOpen) renderChannels();
     return;
   }
-  const db = getChannelDb();
-  if (!db) return;
   nearbyLoading = true;
   nearbySearchError = "";
   if (channelPanelOpen) renderChannels();
+
+  const backend = await resolveChannelSyncBackend();
+  if (backend === "none") {
+    nearbyLoading = false;
+    nearbySearchError =
+      'Channel sharing needs Firebase Database. <a href="https://console.firebase.google.com/project/walkietalkie-mos/database" target="_blank" rel="noopener">Create Realtime Database</a> (one time), then Publish <code>database.rules.json</code> rules.';
+    if (channelPanelOpen) renderChannels();
+    return;
+  }
+
+  if (backend === "rtdb") {
+    startNearbyRtdbListener(wifiKey);
+    return;
+  }
+
+  const fs = getFirestoreDb();
+  if (!fs) {
+    nearbyLoading = false;
+    return;
+  }
   try {
     const snap = await getDocs(
-      query(collection(db, PUBLIC_CHANNELS_COLLECTION), where("wifiKey", "==", wifiKey))
+      query(collection(fs, PUBLIC_CHANNELS_COLLECTION), where("wifiKey", "==", wifiKey))
     );
-    const list = [];
+    const entries = [];
     snap.forEach((docSnap) => {
-      const data = docSnap.data();
-      if (!channelDocIsFresh(data)) return;
-      const channelId = data.channelId || docSnap.id;
-      if (getLocalChannelByPublicId(channelId)) return;
-      list.push({
-        name: data.name || "Channel",
-        channelId,
-        frequency: String(data.frequency || ""),
-        ownerName: data.ownerName || ""
-      });
+      entries.push({ id: docSnap.id, data: docSnap.data() });
     });
-    list.sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-    nearbyChannels = list;
+    parseNearbySnapshotEntries(entries);
+    channelShareOk = true;
   } catch (err) {
     console.warn("Nearby channel search failed", err);
     nearbyChannels = [];
-    if (err?.code === "permission-denied") {
-      nearbySearchError =
-        "Firestore access denied. Enable Firestore in Firebase Console and deploy firestore.rules from this project.";
-    } else {
-      nearbySearchError = "Could not load nearby channels. Check internet and try again.";
-    }
+    nearbySearchError = mapSyncError(err);
+    channelSyncBackend = null;
   }
   nearbyLoading = false;
   if (channelPanelOpen) renderChannels();
@@ -1547,19 +1674,24 @@ async function refreshNearbyChannels() {
 
 function startChannelWifiSync() {
   stopChannelWifiSync();
-  publishActiveChannelToWifi();
+  ensureWifiForDiscovery();
+  publishAllChannelsToWifi();
+  refreshNearbyChannels();
   channelHeartbeatTimer = setInterval(() => {
-    publishActiveChannelToWifi();
-    if (channelPanelOpen) refreshNearbyChannels();
+    publishAllChannelsToWifi();
+    if (channelPanelOpen && channelSyncBackend !== "rtdb") refreshNearbyChannels();
   }, 45000);
 }
 
 function stopChannelWifiSync() {
   if (channelHeartbeatTimer) clearInterval(channelHeartbeatTimer);
   channelHeartbeatTimer = null;
+  stopNearbyListener();
+  channelSyncBackend = null;
   nearbyChannels = [];
   nearbyLoading = false;
   nearbySearchError = "";
+  channelShareOk = false;
 }
 
 function appendChannelEmpty(container, html) {
@@ -1665,7 +1797,7 @@ function renderChannels() {
   } else if (nearbyLoading) {
     appendChannelEmpty(container, "Searching channels on your WiFi…");
   } else if (nearbySearchError) {
-    appendChannelEmpty(container, escapeHtml(nearbySearchError));
+    appendChannelEmpty(container, nearbySearchError);
   }
 
   if (channels.length && (!currentChannel || !channels.some((c) => c.id === currentChannel))) {
@@ -1689,13 +1821,18 @@ function renderChannels() {
     nearbyVisible.forEach((ch) => renderNearbyChannelItem(container, ch));
   }
 
-  if (!localVisible.length && !nearbyVisible.length && !nearbyLoading) {
+  if (!localVisible.length && !nearbyVisible.length && !nearbyLoading && !nearbySearchError) {
     if (query) {
       appendChannelEmpty(
         container,
         wifiKey
           ? "No channels match your search on this WiFi.<br>Ask others to open Channel with the same WiFi selected."
           : "No channels match your search."
+      );
+    } else if (channels.length && wifiKey && channelShareOk) {
+      appendChannelEmpty(
+        container,
+        "Your channel is on WiFi. Waiting for others — they need the same WiFi option + Channel menu open."
       );
     } else if (!channels.length && wifiKey) {
       appendChannelEmpty(
@@ -1719,6 +1856,7 @@ function deleteChannel(id) {
   }
   saveChannels();
   renderChannels();
+  publishAllChannelsToWifi();
 }
 
 function parseChannelFrequency(raw) {
@@ -1751,7 +1889,7 @@ function addNewChannel() {
   saveChannels();
   renderChannels();
   updatePttHint();
-  publishActiveChannelToWifi();
+  publishAllChannelsToWifi();
   refreshNearbyChannels();
 }
 
@@ -1916,7 +2054,7 @@ function selectWifiNetwork(name) {
   }
   renderWifiList(lastWifiScanNetworks, lastWifiConnected);
   if (isLoggedIn) {
-    publishActiveChannelToWifi();
+    publishAllChannelsToWifi();
     refreshNearbyChannels();
   }
 }
