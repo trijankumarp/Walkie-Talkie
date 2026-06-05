@@ -71,10 +71,53 @@
       border-radius: 12px;
       margin-bottom: 20px;
     }
+    .app-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 12px 0 16px;
+      margin-bottom: 8px;
+    }
+    .app-bar-center { flex: 1; text-align: center; min-width: 0; }
+    .app-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .active-team {
+      margin: 4px 0 0;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .menu-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--bg-panel);
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    .menu-btn:hover { background: var(--accent-soft); }
+    .menu-btn svg { width: 22px; height: 22px; }
     .theme-toggle {
-      position: absolute;
-      top: 14px;
-      right: 12px;
+      position: relative;
+      top: auto;
+      right: auto;
+      flex-shrink: 0;
       width: 40px;
       height: 40px;
       border: 1px solid var(--border);
@@ -215,18 +258,51 @@
     }
     .add-channel { display: flex; gap: 10px; margin: 12px 0; }
 
-    .talk-row {
-      position: relative;
+    .radio-screen {
+      flex: 1;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 240px;
-      margin: 24px 0 16px;
-      padding: 20px 12px 56px;
+      min-height: calc(100vh - 120px);
+      padding: 8px 0 24px;
+    }
+    .status-main {
+      width: 100%;
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      padding: 0 8px;
+      line-height: 1.4;
+    }
+    .conn-chips {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 20px;
+      width: 100%;
+    }
+    .chip {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 20px;
       background: var(--bg-panel);
       border: 1px solid var(--border);
-      border-radius: 16px;
+      color: var(--text-faint);
+    }
+    .chip.on { color: var(--text); border-color: var(--text-muted); }
+
+    .talk-row {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      margin: 16px 0;
+      padding: 24px 16px;
     }
     .ptt-col {
       display: flex;
@@ -236,8 +312,8 @@
     }
     .ptt-ring {
       position: relative;
-      width: 160px;
-      height: 160px;
+      width: 200px;
+      height: 200px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -254,8 +330,8 @@
     }
     .ptt-ring::after { animation-delay: 1.2s; }
     .ptt-orb {
-      width: 140px;
-      height: 140px;
+      width: 176px;
+      height: 176px;
       border-radius: 50%;
       z-index: 1;
       display: flex;
@@ -275,20 +351,20 @@
     }
     .ptt-orb:active { transform: scale(0.96); }
     .ptt-icon {
-      width: 40px;
-      height: 40px;
+      width: 52px;
+      height: 52px;
       border-radius: 50%;
-      background: rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.2);
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 20px;
     }
+    .ptt-icon svg { width: 28px; height: 28px; stroke: #fafafa; fill: none; }
     .ptt-text {
       color: #fafafa;
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 600;
-      letter-spacing: 1px;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
     }
     .ptt-hint {
@@ -298,33 +374,97 @@
       text-align: center;
     }
 
-    .mute-side {
-      position: absolute;
-      right: 16px;
-      bottom: 12px;
-      width: 64px;
-      height: 64px;
-      border-radius: 50%;
-      border: 2px solid var(--border);
+    .menu-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 200;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.25s, visibility 0.25s;
+    }
+    .menu-overlay.open { opacity: 1; visibility: visible; }
+    .side-menu {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: min(320px, 88vw);
+      height: 100%;
       background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      z-index: 201;
+      transform: translateX(-100%);
+      transition: transform 0.28s ease;
+      overflow-y: auto;
+      box-shadow: 8px 0 32px var(--shadow);
+    }
+    .side-menu.open { transform: translateX(0); }
+    .menu-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .menu-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
+    .menu-close {
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 50%;
+      background: var(--bg-panel);
+      color: var(--text);
+      font-size: 22px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .menu-block { padding: 16px; border-bottom: 1px solid var(--border); }
+    .menu-block-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
       color: var(--text-muted);
+      margin: 0 0 12px;
+    }
+    .menu-block-title svg { width: 18px; height: 18px; stroke: currentColor; fill: none; }
+    .menu-channel-list { max-height: 160px; overflow-y: auto; }
+    .action-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin: 12px 0;
+    }
+    .action-btn {
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 2px;
+      gap: 8px;
+      background: none;
+      border: none;
       cursor: pointer;
-      transition: all 0.2s;
       padding: 0;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
     }
-    .mute-side:hover { background: var(--accent-soft); border-color: var(--text-muted); }
-    .mute-side.muted {
-      background: var(--red-bg);
-      border-color: var(--red);
-      color: var(--red);
+    .action-btn .action-circle {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, transform 0.15s;
     }
-    .mute-side .mute-icon { font-size: 26px; line-height: 1; }
-    .mute-side .mute-label { font-size: 11px; font-weight: 600; text-transform: uppercase; }
+    .action-btn:hover .action-circle { background: var(--accent-soft); transform: scale(1.03); }
+    .action-btn .action-circle svg { width: 26px; height: 26px; stroke: var(--text); fill: none; }
+    .menu-list { margin-top: 8px; max-height: 100px; overflow-y: auto; }
 
     @keyframes siri-ring {
       0% { transform: scale(0.85); opacity: 0.6; }
@@ -487,66 +627,108 @@
 
     <!-- Main UI -->
     <div id="mainUI" style="display:none;">
-      <div class="section-title">Channels</div>
-      <div class="add-channel">
-        <input type="text" id="newChannelName" placeholder="Create channel name (e.g. Team A)">
-        <button class="btn" style="width:auto; padding:14px 24px;" onclick="addNewChannel()">+ CREATE</button>
-      </div>
-      <div class="channel-list" id="channelList"></div>
-
-      <div class="talk-row">
-        <div class="ptt-col">
-          <div class="ptt-ring">
-            <div class="ptt-orb" id="pttBtn"
-                 onmousedown="startTalk()"
-                 onmouseup="stopTalk()"
-                 onmouseleave="stopTalk()"
-                 ontouchstart="startTalk(event)"
-                 ontouchend="stopTalk(event)">
-              <div class="ptt-icon" id="pttIcon">🎙</div>
-              <span class="ptt-text" id="pttLabel">Hold to talk</span>
-            </div>
-          </div>
-          <p class="ptt-hint" id="pttHint">Select or create a channel first</p>
+      <div class="app-bar">
+        <button type="button" class="menu-btn" onclick="openMenu()" aria-label="Open menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16"/>
+          </svg>
+        </button>
+        <div class="app-bar-center">
+          <p class="app-title">Walkie Talkie</p>
+          <p class="active-team" id="activeTeam">No team</p>
         </div>
-        <button type="button" class="mute-side" id="muteBtn" onclick="toggleMute()" aria-label="Mute">
-          <span class="mute-icon" id="muteIcon">🔊</span>
-          <span class="mute-label" id="muteLabel">Mute</span>
+        <button type="button" class="theme-toggle" id="themeToggleMain" onclick="toggleTheme()" aria-label="Dark or light mode">
+          <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle cx="20" cy="20" r="19" fill="#fafafa"/>
+            <path d="M20 1 A19 19 0 0 1 20 39 A19 19 0 0 1 20 1 Z" fill="#171717"/>
+            <circle cx="20" cy="20" r="19" fill="none" stroke="#a3a3a3" stroke-width="1"/>
+          </svg>
         </button>
       </div>
 
-      <div class="section-title">Connect</div>
-
-      <div class="help-box" id="btHelp">
-        <strong>How to connect Bluetooth</strong>
-        <ol>
-          <li>Turn on Bluetooth on your phone or PC.</li>
-          <li>Tap <strong>Bluetooth</strong> below and pick your device.</li>
-          <li>Allow pairing when asked. Status shows Connected or Not connected.</li>
-        </ol>
+      <div class="radio-screen">
+        <div id="statusMain" class="status-main">Ready</div>
+        <div class="talk-row">
+          <div class="ptt-col">
+            <div class="ptt-ring">
+              <div class="ptt-orb" id="pttBtn"
+                   onmousedown="startTalk()"
+                   onmouseup="stopTalk()"
+                   onmouseleave="stopTalk()"
+                   ontouchstart="startTalk(event)"
+                   ontouchend="stopTalk(event)">
+                <div class="ptt-icon" id="pttIcon">
+                  <svg viewBox="0 0 24 24" stroke-width="2" aria-hidden="true">
+                    <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3z"/>
+                    <path d="M19 11v1a7 7 0 0 1-14 0v-1M12 18v3"/>
+                  </svg>
+                </div>
+                <span class="ptt-text" id="pttLabel">Hold to talk</span>
+              </div>
+            </div>
+            <p class="ptt-hint" id="pttHint">Open menu to select or create a team</p>
+          </div>
+        </div>
+        <div class="conn-chips">
+          <span class="chip" id="btChip">Bluetooth: Off</span>
+          <span class="chip" id="wifiChip">WiFi: Off</span>
+        </div>
       </div>
-      <div id="btStatus" class="conn-line disconnected">Bluetooth: Not connected</div>
-      <button class="btn" onclick="scanBluetooth()">Bluetooth</button>
-      <div class="list" id="btList">Tap Bluetooth to pick a device</div>
-      <button class="btn btn-disconnect" id="btnBtDisconnect" style="display:none;" onclick="disconnectBluetooth()">Disconnect Bluetooth</button>
-
-      <div class="help-box" id="wifiHelp">
-        <strong>How to connect WiFi (team)</strong>
-        <ol>
-          <li>Put every team member on the <strong>same WiFi</strong> network.</li>
-          <li>Tap <strong>WiFi</strong> below to scan (Windows app) or see network tips.</li>
-          <li>Select the same channel above for team talk.</li>
-        </ol>
-      </div>
-      <div id="wifiStatus" class="conn-line disconnected">WiFi: Not connected</div>
-      <button class="btn" onclick="scanWiFi()">WiFi</button>
-      <div class="list" id="wifiList">
-        <div class="item">Tap WiFi for network list or team steps</div>
-      </div>
-
-      <button class="btn btn-logout" onclick="logout()">Logout</button>
     </div>
   </div>
+
+  <div id="menuOverlay" class="menu-overlay" onclick="closeMenu()"></div>
+  <nav id="sideMenu" class="side-menu" aria-label="App menu">
+    <div class="menu-head">
+      <h2>Menu</h2>
+      <button type="button" class="menu-close" onclick="closeMenu()" aria-label="Close menu">×</button>
+    </div>
+
+    <div class="menu-block">
+      <p class="menu-block-title">
+        <svg viewBox="0 0 24 24" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Switch team
+      </p>
+      <div class="add-channel">
+        <input type="text" id="newChannelName" placeholder="New team name">
+        <button class="btn" style="width:auto; padding:12px 16px; margin:0;" onclick="addNewChannel()">+</button>
+      </div>
+      <div class="channel-list menu-channel-list" id="channelList"></div>
+    </div>
+
+    <div class="menu-block">
+      <p class="menu-block-title">Connect</p>
+      <div class="action-grid">
+        <button type="button" class="action-btn" onclick="scanBluetooth()">
+          <span class="action-circle">
+            <svg viewBox="0 0 24 24" stroke-width="2"><path d="M6.5 6.5a8 8 0 0 1 11 11M9 9a4 4 0 0 1 6 6M12 12h.01"/></svg>
+          </span>
+          Bluetooth
+        </button>
+        <button type="button" class="action-btn" onclick="scanWiFi()">
+          <span class="action-circle">
+            <svg viewBox="0 0 24 24" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
+          </span>
+          WiFi
+        </button>
+      </div>
+      <div id="btStatus" class="conn-line disconnected">Bluetooth: Not connected</div>
+      <div class="list menu-list" id="btList">Tap Bluetooth to connect</div>
+      <button class="btn btn-disconnect" id="btnBtDisconnect" style="display:none;" onclick="disconnectBluetooth()">Disconnect Bluetooth</button>
+      <div id="wifiStatus" class="conn-line disconnected">WiFi: Not connected</div>
+      <div class="list menu-list" id="wifiList">
+        <div class="item">Tap WiFi for network info</div>
+      </div>
+      <div class="help-box">
+        <strong>Bluetooth:</strong> Turn on BT → tap Bluetooth → pick device.<br>
+        <strong>WiFi:</strong> Same network for all team → tap WiFi.
+      </div>
+    </div>
+
+    <div class="menu-block">
+      <button class="btn btn-logout" onclick="logout()">Logout</button>
+    </div>
+  </nav>
 
   <script src="firebase-config.js"></script>
   <script type="module" src="auth.js"></script>

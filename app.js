@@ -3,7 +3,6 @@ const THEME_KEY = "walkie_theme_v1";
 
 let isLoggedIn = false;
 let wifiConnectedName = null;
-let isMuted = false;
 let isTalking = false;
 let currentChannel = null;
 let channels = [];
@@ -38,8 +37,50 @@ function updatePttHint() {
   if (!hint) return;
   const name = getActiveChannelName();
   hint.textContent = name
-    ? `Channel: ${name} — hold orb to talk`
-    : "Create or select a channel first";
+    ? `Hold the button to talk on ${name}`
+    : "Open menu (top left) to select or create a team";
+}
+
+function openMenu() {
+  document.getElementById("menuOverlay")?.classList.add("open");
+  document.getElementById("sideMenu")?.classList.add("open");
+}
+
+function closeMenu() {
+  document.getElementById("menuOverlay")?.classList.remove("open");
+  document.getElementById("sideMenu")?.classList.remove("open");
+}
+
+function updateActiveTeamBadge() {
+  const el = document.getElementById("activeTeam");
+  if (!el) return;
+  el.textContent = getActiveChannelName() || "No team";
+}
+
+function updateBtChip(connected, name) {
+  const chip = document.getElementById("btChip");
+  if (!chip) return;
+  if (connected && name) {
+    const short = name.length > 14 ? name.slice(0, 12) + "…" : name;
+    chip.textContent = `Bluetooth: ${short}`;
+    chip.classList.add("on");
+  } else {
+    chip.textContent = "Bluetooth: Off";
+    chip.classList.remove("on");
+  }
+}
+
+function updateWifiChip(connected, name) {
+  const chip = document.getElementById("wifiChip");
+  if (!chip) return;
+  if (connected && name) {
+    const short = name.length > 14 ? name.slice(0, 12) + "…" : name;
+    chip.textContent = `WiFi: ${short}`;
+    chip.classList.add("on");
+  } else {
+    chip.textContent = "WiFi: Off";
+    chip.classList.remove("on");
+  }
 }
 
 function isValidEmail(email) {
@@ -117,35 +158,41 @@ function toggleTheme() {
 
 function setBtStatus(connected, name) {
   const el = document.getElementById("btStatus");
-  if (!el) return;
-  if (connected && name) {
-    el.textContent = `Bluetooth: Connected — ${name}`;
-    el.className = "conn-line connected";
-  } else {
-    el.textContent = "Bluetooth: Not connected";
-    el.className = "conn-line disconnected";
+  if (el) {
+    if (connected && name) {
+      el.textContent = `Bluetooth: Connected — ${name}`;
+      el.className = "conn-line connected";
+    } else {
+      el.textContent = "Bluetooth: Not connected";
+      el.className = "conn-line disconnected";
+    }
   }
+  updateBtChip(connected, name);
 }
 
 function setWifiStatus(connected, name) {
   const el = document.getElementById("wifiStatus");
-  if (!el) return;
-  if (connected && name) {
-    el.textContent = `WiFi: Connected — ${name}`;
-    el.className = "conn-line connected";
-  } else {
-    el.textContent = "WiFi: Not connected";
-    el.className = "conn-line disconnected";
+  if (el) {
+    if (connected && name) {
+      el.textContent = `WiFi: Connected — ${name}`;
+      el.className = "conn-line connected";
+    } else {
+      el.textContent = "WiFi: Not connected";
+      el.className = "conn-line disconnected";
+    }
   }
+  updateWifiChip(connected, name);
 }
 
 function refreshStatusBar() {
   if (!loggedInUser || !isLoggedIn) return;
+  const el = document.getElementById("statusMain");
+  if (!el) return;
   const ch = getActiveChannelName();
-  const chLine = ch
-    ? `<br><span class="accent" style="font-size:13px;">Channel: ${ch}</span>`
-    : "";
-  document.getElementById("status").innerHTML = `Logged in as <strong>${loggedInUser.name}</strong><br><span style="font-size:13px;color:var(--text-muted)">${loggedInUser.email}</span>${chLine}`;
+  el.innerHTML = ch
+    ? `${loggedInUser.name} · <span class="accent">${ch}</span>`
+    : `${loggedInUser.name} · <span style="color:var(--text-faint)">Select a team in menu</span>`;
+  updateActiveTeamBadge();
 }
 
 function enterApp(user) {
@@ -260,9 +307,10 @@ function renderChannels() {
 
   if (channels.length === 0) {
     container.innerHTML =
-      '<div class="channel-empty">No channels yet.<br>Create your first channel above.</div>';
+      '<div class="channel-empty">No teams yet.<br>Create one above.</div>';
     currentChannel = null;
     updatePttHint();
+    updateActiveTeamBadge();
     return;
   }
 
@@ -285,11 +333,13 @@ function renderChannels() {
       renderChannels();
       refreshStatusBar();
       updatePttHint();
+      closeMenu();
     };
 
     container.appendChild(div);
   });
   updatePttHint();
+  updateActiveTeamBadge();
 }
 
 function deleteChannel(id) {
@@ -448,38 +498,25 @@ async function scanWiFi() {
   }
 }
 
-function toggleMute() {
-  isMuted = !isMuted;
-  const btn = document.getElementById("muteBtn");
-  const icon = document.getElementById("muteIcon");
-  const label = document.getElementById("muteLabel");
-  if (btn) btn.classList.toggle("muted", isMuted);
-  if (icon) icon.textContent = isMuted ? "🔇" : "🔊";
-  if (label) label.textContent = isMuted ? "Muted" : "Mute";
-  if (isMuted && isTalking) stopTalk();
-}
-
 function setPttVisual(talking) {
   const orb = document.getElementById("pttBtn");
   const label = document.getElementById("pttLabel");
-  const icon = document.getElementById("pttIcon");
   if (!orb) return;
   orb.classList.toggle("talking", talking);
-  if (label) label.textContent = talking ? "Listening…" : "Hold to talk";
-  if (icon) icon.textContent = talking ? "🔊" : "🎙";
+  if (label) label.textContent = talking ? "Transmitting…" : "Hold to talk";
 }
 
 function startTalk(e) {
   if (e?.cancelable) e.preventDefault();
-  if (isMuted) return;
   if (!getActiveChannelName()) {
-    alert("Create or select a channel first.");
+    openMenu();
     return;
   }
   isTalking = true;
   setPttVisual(true);
   const ch = getActiveChannelName();
-  document.getElementById("status").innerHTML = `<span class="accent">Transmitting on <strong>${ch}</strong></span>`;
+  const el = document.getElementById("statusMain");
+  if (el) el.innerHTML = `<span class="accent">Live · ${ch}</span>`;
 }
 
 function stopTalk(e) {
@@ -493,6 +530,7 @@ function stopTalk(e) {
 async function logout() {
   isLoggedIn = false;
   stopTalk();
+  closeMenu();
   await disconnectBluetooth();
   try {
     await window.mosAuth.logout();
@@ -519,7 +557,7 @@ function boot() {
   }
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === " " && isLoggedIn && !isMuted) {
+    if (e.key === " " && isLoggedIn) {
       e.preventDefault();
       startTalk();
     }
@@ -527,10 +565,15 @@ function boot() {
   document.addEventListener("keyup", (e) => {
     if (e.key === " " && isLoggedIn) stopTalk();
   });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeMenu();
+  });
 }
 
 Object.assign(window, {
   toggleTheme,
+  openMenu,
+  closeMenu,
   showAuthTab,
   login,
   loginWithGoogle,
@@ -539,7 +582,6 @@ Object.assign(window, {
   scanBluetooth,
   disconnectBluetooth,
   scanWiFi,
-  toggleMute,
   startTalk,
   stopTalk,
   logout,
