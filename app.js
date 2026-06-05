@@ -1,6 +1,8 @@
 const CHANNELS_KEY = "walkie_channels_v1";
+const THEME_KEY = "walkie_theme_v1";
 
 let isLoggedIn = false;
+let wifiConnectedName = null;
 let isMuted = false;
 let isTalking = false;
 let currentChannel = null;
@@ -63,7 +65,7 @@ function setAuthError(msg, fieldIds = []) {
   if (msg && msg.includes("Authentication is not enabled")) {
     el.innerHTML =
       msg +
-      '<br><a href="https://console.firebase.google.com/project/walkietalkie-mos/authentication" target="_blank" rel="noopener" style="color:#2563eb;margin-top:8px;display:inline-block;">Open Firebase Authentication →</a>';
+      '<br><a href="https://console.firebase.google.com/project/walkietalkie-mos/authentication" target="_blank" rel="noopener" style="color:var(--text);margin-top:8px;display:inline-block;">Open Firebase Authentication →</a>';
   } else {
     el.textContent = msg || "";
   }
@@ -95,13 +97,55 @@ function showAuthTab(tab) {
   document.getElementById("panelSignup").classList.toggle("active", !isLogin);
 }
 
+function applyTheme(theme) {
+  const t = theme === "light" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", t);
+  localStorage.setItem(THEME_KEY, t);
+  const meta = document.getElementById("metaThemeColor");
+  if (meta) meta.content = t === "dark" ? "#1a1a1a" : "#f5f5f5";
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  applyTheme(saved === "light" ? "light" : "dark");
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute("data-theme") || "dark";
+  applyTheme(current === "dark" ? "light" : "dark");
+}
+
+function setBtStatus(connected, name) {
+  const el = document.getElementById("btStatus");
+  if (!el) return;
+  if (connected && name) {
+    el.textContent = `Bluetooth: Connected — ${name}`;
+    el.className = "conn-line connected";
+  } else {
+    el.textContent = "Bluetooth: Not connected";
+    el.className = "conn-line disconnected";
+  }
+}
+
+function setWifiStatus(connected, name) {
+  const el = document.getElementById("wifiStatus");
+  if (!el) return;
+  if (connected && name) {
+    el.textContent = `WiFi: Connected — ${name}`;
+    el.className = "conn-line connected";
+  } else {
+    el.textContent = "WiFi: Not connected";
+    el.className = "conn-line disconnected";
+  }
+}
+
 function refreshStatusBar() {
   if (!loggedInUser || !isLoggedIn) return;
   const ch = getActiveChannelName();
   const chLine = ch
     ? `<br><span class="accent" style="font-size:13px;">Channel: ${ch}</span>`
     : "";
-  document.getElementById("status").innerHTML = `Logged in as <strong>${loggedInUser.name}</strong><br><span style="font-size:13px;color:#888">${loggedInUser.email}</span>${chLine}`;
+  document.getElementById("status").innerHTML = `Logged in as <strong>${loggedInUser.name}</strong><br><span style="font-size:13px;color:var(--text-muted)">${loggedInUser.email}</span>${chLine}`;
 }
 
 function enterApp(user) {
@@ -232,7 +276,7 @@ function renderChannels() {
 
     div.innerHTML = `
       <span class="channel-name">${ch.name}</span>
-      <button class="delete-btn" onclick="deleteChannel(${ch.id}); event.stopImmediatePropagation();">Delete</button>
+      <button type="button" class="delete-btn" title="Delete channel" aria-label="Delete channel" onclick="deleteChannel(${ch.id}); event.stopImmediatePropagation();">🗑</button>
     `;
 
     div.onclick = (e) => {
@@ -275,16 +319,13 @@ function addNewChannel() {
 
 function setBluetoothUi(connected, deviceName) {
   const disconnectBtn = document.getElementById("btnBtDisconnect");
-  const conn = document.getElementById("connStatus");
   if (connected) {
     if (disconnectBtn) disconnectBtn.style.display = "block";
-    if (conn) {
-      conn.innerHTML = `Bluetooth connected: <strong>${deviceName}</strong>`;
-      conn.style.color = "#2563eb";
-    }
+    setBtStatus(true, deviceName);
   } else {
     if (disconnectBtn) disconnectBtn.style.display = "none";
     bleDevice = null;
+    setBtStatus(false);
   }
 }
 
@@ -299,9 +340,8 @@ async function disconnectBluetooth() {
   bleDevice = null;
   setBluetoothUi(false);
   document.getElementById("btList").innerHTML =
-    '<div class="item">Bluetooth disconnected. Tap Scan & Connect to pair again.</div>';
-  document.getElementById("connStatus").innerHTML = "No connection";
-  document.getElementById("connStatus").style.color = "";
+    '<div class="item">Bluetooth disconnected. Tap Bluetooth to pair again.</div>';
+  setBtStatus(false);
 }
 
 async function scanBluetooth() {
@@ -371,10 +411,13 @@ async function scanWiFi() {
           : "";
         const items = result.networks.map((n) => `<div class="item ok">${n}</div>`).join("");
         list.innerHTML = `${connected}${items}<div class="item ok">Channel: ${channelName}</div>`;
-        document.getElementById("connStatus").innerHTML = result.connected
-          ? `WiFi: ${result.connected}`
-          : `Found ${result.networks.length} networks`;
-        document.getElementById("connStatus").style.color = "#2563eb";
+        if (result.connected) {
+          wifiConnectedName = result.connected;
+          setWifiStatus(true, result.connected);
+        } else {
+          wifiConnectedName = null;
+          setWifiStatus(false);
+        }
         return;
       }
       list.innerHTML = `<div class="item warn">${result.message || "No networks found."}</div>`;
@@ -385,14 +428,24 @@ async function scanWiFi() {
     }
   }
 
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  const onWifi = conn?.type === "wifi";
+  const hint = getNetworkHint();
+
   list.innerHTML = `
-    <div class="item ok">${getNetworkHint()}</div>
+    <div class="item ok">${hint}</div>
     <div class="item ok">Put all devices on the <strong>same WiFi</strong>.</div>
     <div class="item ok">Use the same channel: <strong>${channelName}</strong></div>
-    <div class="item warn">For WiFi list scan use the Windows desktop app.</div>
+    <div class="item warn">For full WiFi list scan use the Windows desktop app (npm run windows).</div>
   `;
-  document.getElementById("connStatus").innerHTML = "Team WiFi mode";
-  document.getElementById("connStatus").style.color = "#2563eb";
+
+  if (onWifi) {
+    wifiConnectedName = "WiFi (browser)";
+    setWifiStatus(true, "On WiFi — same network as team");
+  } else {
+    wifiConnectedName = null;
+    setWifiStatus(false);
+  }
 }
 
 function toggleMute() {
@@ -453,7 +506,10 @@ async function logout() {
 }
 
 function boot() {
+  initTheme();
   loadChannels();
+  setBtStatus(false);
+  setWifiStatus(false);
   if (!window.mosAuth?.isConfigured()) {
     setAuthError("Add Firebase keys in firebase-config.js to enable real login.");
   }
@@ -474,6 +530,7 @@ function boot() {
 }
 
 Object.assign(window, {
+  toggleTheme,
   showAuthTab,
   login,
   loginWithGoogle,
