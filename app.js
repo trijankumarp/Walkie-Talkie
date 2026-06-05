@@ -324,29 +324,78 @@ function sanitizeFirstNameInput(elOrId) {
   return cleaned;
 }
 
-function bindNoSpaceFirstName(...ids) {
+function getLastNameInputForFirst(firstEl) {
+  if (!firstEl) return null;
+  if (firstEl.id === "profileFirstName") return document.getElementById("profileLastName");
+  if (firstEl.id === "signupFirstName") return document.getElementById("signupLastName");
+  return null;
+}
+
+function focusLastNameWithSpace(lastEl) {
+  if (!lastEl) return;
+  lastEl.focus();
+  const pos = lastEl.selectionStart ?? lastEl.value.length;
+  const val = lastEl.value;
+  if (val.length > 0 && (pos === 0 || val[pos - 1] !== " ")) {
+    lastEl.value = `${val.slice(0, pos)} ${val.slice(pos)}`;
+    lastEl.setSelectionRange(pos + 1, pos + 1);
+  }
+}
+
+function splitPastedNameIntoFields(firstEl, text) {
+  const parts = (text || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return;
+  const lastEl = getLastNameInputForFirst(firstEl);
+  firstEl.value = parts[0];
+  sanitizeFirstNameInput(firstEl);
+  if (!lastEl) return;
+  const rest = parts.slice(1).join(" ");
+  if (!rest) {
+    focusLastNameWithSpace(lastEl);
+    return;
+  }
+  const cur = lastEl.value.trim();
+  lastEl.value = cur ? `${cur} ${rest}` : rest;
+  lastEl.focus();
+  lastEl.setSelectionRange(lastEl.value.length, lastEl.value.length);
+}
+
+function bindFirstNameField(...ids) {
   ids.forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
     const clean = () => sanitizeFirstNameInput(el);
-    el.setAttribute("pattern", "[^\\s]+");
-    el.setAttribute("title", "First name cannot contain spaces");
     el.setAttribute("autocomplete", "off");
+    el.setAttribute("spellcheck", "false");
     el.addEventListener("input", clean);
     el.addEventListener("blur", clean);
     el.addEventListener("compositionend", clean);
-    el.addEventListener("beforeinput", (e) => {
-      if (e.data && /\s/.test(e.data)) e.preventDefault();
-    });
     el.addEventListener("keydown", (e) => {
-      if (e.key === " " || e.code === "Space") e.preventDefault();
+      if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        clean();
+        focusLastNameWithSpace(getLastNameInputForFirst(el));
+      }
     });
-    el.addEventListener("keypress", (e) => {
-      if (e.key === " " || e.charCode === 32) e.preventDefault();
+    el.addEventListener("beforeinput", (e) => {
+      if (!e.data || !/\s/.test(e.data)) return;
+      e.preventDefault();
+      clean();
+      const lastEl = getLastNameInputForFirst(el);
+      const chunks = e.data.split(/\s+/).filter(Boolean);
+      if (chunks.length > 1) {
+        splitPastedNameIntoFields(el, [el.value.trim(), ...chunks.slice(1)].filter(Boolean).join(" "));
+        return;
+      }
+      focusLastNameWithSpace(lastEl);
     });
     el.addEventListener("paste", (e) => {
       e.preventDefault();
-      const text = (e.clipboardData?.getData("text") || "").replace(/\s+/g, "");
+      const text = e.clipboardData?.getData("text") || "";
+      if (/\s/.test(text)) {
+        splitPastedNameIntoFields(el, text);
+        return;
+      }
       const start = el.selectionStart ?? el.value.length;
       const end = el.selectionEnd ?? el.value.length;
       el.value = el.value.slice(0, start) + text + el.value.slice(end);
@@ -413,7 +462,7 @@ function toggleSettingsEditor(key) {
 
   fillProfileForm();
   if (key === "name") {
-    bindNoSpaceFirstName("profileFirstName");
+    bindFirstNameField("profileFirstName");
   }
   if (key === "delete") setupDeleteAccountEditor();
   if (key === "permissions") renderAppPermissions();
@@ -466,9 +515,10 @@ function buildSettingsEditorHtml(key) {
     name: `
       <div class="name-edit-panel">
         <label class="profile-label">First name</label>
-        <input type="text" id="profileFirstName" class="profile-input" placeholder="First name (no spaces)" autocomplete="off" spellcheck="false" inputmode="text" pattern="[^\\s]+" title="No spaces in first name" onkeydown="if(event.key===' ')event.preventDefault()" oninput="sanitizeFirstNameInput(this)">
+        <input type="text" id="profileFirstName" class="profile-input" placeholder="First name" autocomplete="off" spellcheck="false" inputmode="text">
+        <p class="profile-hint" style="margin:-4px 0 10px;">Press <strong>Space</strong> to type middle/last name below.</p>
         <label class="profile-label">Last name</label>
-        <input type="text" id="profileLastName" class="profile-input" placeholder="Last name" autocomplete="family-name">
+        <input type="text" id="profileLastName" class="profile-input" placeholder="Last name (e.g. Kumar Puvvada)" autocomplete="family-name">
         <div class="name-visibility">
           <p class="name-visibility-title">Who can see your name</p>
           <p class="name-visibility-text">Anyone you connect with on Walkie Talkie can see this name.</p>
@@ -1945,7 +1995,7 @@ function boot() {
   initTheme();
   initCountrySelect();
   initSignupFields();
-  bindNoSpaceFirstName("signupFirstName");
+  bindFirstNameField("signupFirstName");
   initAvatarPickers();
   loadChannels();
   loadFriends();
