@@ -51,6 +51,22 @@ function closeMenu() {
   document.getElementById("sideMenu")?.classList.remove("open");
 }
 
+function showBluetoothInstructions() {
+  const bt = document.getElementById("btInstructions");
+  const wifi = document.getElementById("wifiInstructions");
+  if (bt) bt.classList.add("visible");
+  if (wifi) wifi.classList.remove("visible");
+  bt?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function showWifiInstructions() {
+  const bt = document.getElementById("btInstructions");
+  const wifi = document.getElementById("wifiInstructions");
+  if (wifi) wifi.classList.add("visible");
+  if (bt) bt.classList.remove("visible");
+  wifi?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 function updateActiveTeamBadge() {
   const el = document.getElementById("activeTeam");
   if (!el) return;
@@ -551,9 +567,9 @@ function boot() {
   if (!window.mosAuth?.isConfigured()) {
     setAuthError("Add Firebase keys in firebase-config.js to enable real login.");
   }
-  if (window.windowsAPI?.isDesktop) {
-    const status = document.getElementById("status");
-    if (status && !isLoggedIn) status.innerHTML = "Windows app · Ready";
+  if (window.windowsAPI?.isDesktop && !isLoggedIn) {
+    const brand = document.querySelector(".login-brand");
+    if (brand) brand.textContent = "Walkie Talkie · Windows";
   }
 
   document.addEventListener("keydown", (e) => {
@@ -574,6 +590,8 @@ Object.assign(window, {
   toggleTheme,
   openMenu,
   closeMenu,
+  showBluetoothInstructions,
+  showWifiInstructions,
   showAuthTab,
   login,
   loginWithGoogle,
