@@ -228,6 +228,7 @@ function toggleWifiMenu(forceOpen) {
   if (next) {
     setWifiMenuOpen(true);
     setBluetoothMenuOpen(false);
+    if (!selectedWifiName) ensureWifiForDiscovery();
     refreshWifiList();
   } else {
     setWifiMenuOpen(false);
@@ -1543,6 +1544,7 @@ function ensureWifiForDiscovery() {
   selectedWifiName = "channel-wifi";
   localStorage.setItem(WIFI_SEL_KEY, "channel-wifi");
   setWifiStatus(true, "Same WiFi as channel");
+  updateWifiChip(true, "Same WiFi");
 }
 
 function parseNearbySnapshotEntries(entries) {
@@ -2062,77 +2064,112 @@ function selectWifiNetwork(name) {
 let lastWifiScanNetworks = [];
 let lastWifiConnected = "";
 
-function renderWifiList(networks, connectedSsid) {
+function bindWifiListClicks(list) {
+  list.querySelectorAll("[data-wifi]").forEach((el) => {
+    el.addEventListener("click", () => selectWifiNetwork(el.getAttribute("data-wifi")));
+  });
+  list.querySelector("#wifiManualApply")?.addEventListener("click", applyManualWifiName);
+  list.querySelector("#wifiManualName")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") applyManualWifiName();
+  });
+}
+
+function applyManualWifiName() {
+  const raw = document.getElementById("wifiManualName")?.value?.trim();
+  if (!raw) {
+    alert("Type your WiFi name (same on all devices), or tap “Same WiFi as channel” above.");
+    return;
+  }
+  selectWifiNetwork(raw);
+}
+
+function renderWifiPickList({ networks = [], connectedSsid = "", topHint = "", bottomHint = "" } = {}) {
   const list = document.getElementById("wifiList");
   if (!list) return;
 
-  if (!networks.length) {
-    list.innerHTML =
-      '<div class="pick-item warn">No networks found. Use Windows app for full scan, or join WiFi in phone settings.</div>';
-    return;
+  let html = "";
+  if (topHint) {
+    html += `<div class="pick-item warn">${escapeHtml(topHint)}</div>`;
   }
 
-  let html = "";
   const sameWifiActive = selectedWifiName === "channel-wifi" ? " active" : "";
-  html += `<div class="pick-item${sameWifiActive}" data-wifi="channel-wifi">Same WiFi as channel (all devices)</div>`;
+  html += `<div class="pick-item pick-item-primary${sameWifiActive}" data-wifi="channel-wifi"><strong>Same WiFi as channel</strong><span class="pick-item-sub">Tap this on every phone on the same WiFi (recommended)</span></div>`;
+
   if (connectedSsid) {
     const active = selectedWifiName === connectedSsid ? " active" : "";
-    html += `<div class="pick-item${active}" data-wifi="${escapeHtml(connectedSsid)}">${escapeHtml(connectedSsid)} (connected)</div>`;
+    html += `<div class="pick-item${active}" data-wifi="${escapeHtml(connectedSsid)}">${escapeHtml(connectedSsid)} (connected on this device)</div>`;
   }
 
   networks.forEach((n) => {
-    if (n === connectedSsid) return;
+    if (!n || n === connectedSsid) return;
     const active = selectedWifiName === n ? " active" : "";
     html += `<div class="pick-item${active}" data-wifi="${escapeHtml(n)}">${escapeHtml(n)}</div>`;
   });
 
+  html += `
+    <div class="wifi-manual-row">
+      <input type="text" id="wifiManualName" class="wifi-manual-input" placeholder="WiFi name (optional, same on all devices)" autocomplete="off">
+      <button type="button" class="btn btn-sm" id="wifiManualApply">Use name</button>
+    </div>`;
+
+  if (bottomHint) {
+    html += `<div class="pick-item warn">${escapeHtml(bottomHint)}</div>`;
+  } else if (!window.windowsAPI?.scanWifiNetworks) {
+    html += `<div class="pick-item warn">Phones cannot list WiFi names in the browser — use “Same WiFi as channel” above.</div>`;
+  }
+
   list.innerHTML = html;
-  list.querySelectorAll("[data-wifi]").forEach((el) => {
-    el.addEventListener("click", () => selectWifiNetwork(el.getAttribute("data-wifi")));
-  });
+  bindWifiListClicks(list);
+}
+
+function renderWifiList(networks, connectedSsid) {
+  lastWifiScanNetworks = networks || [];
+  lastWifiConnected = connectedSsid || "";
+  renderWifiPickList({ networks: lastWifiScanNetworks, connectedSsid: lastWifiConnected });
 }
 
 async function refreshWifiList() {
   const list = document.getElementById("wifiList");
   if (!list) return;
-  list.innerHTML = '<div class="pick-item warn">Scanning…</div>';
-
-  const channelName = getActiveChannelTalkLabel() || "your channel";
+  list.innerHTML = '<div class="pick-item warn">Loading…</div>';
 
   if (window.windowsAPI?.scanWifiNetworks) {
     try {
       const result = await window.windowsAPI.scanWifiNetworks();
-      if (result.ok && result.networks.length) {
-        lastWifiScanNetworks = result.networks;
-        lastWifiConnected = result.connected || "";
-        renderWifiList(result.networks, result.connected);
-        if (result.connected && !selectedWifiName) {
-          selectWifiNetwork(result.connected);
-        }
-        return;
+      lastWifiScanNetworks = result.networks || [];
+      lastWifiConnected = result.connected || "";
+      renderWifiPickList({
+        networks: lastWifiScanNetworks,
+        connectedSsid: lastWifiConnected,
+        topHint: result.ok ? "" : result.message || "Scan could not list networks.",
+        bottomHint: lastWifiScanNetworks.length
+          ? ""
+          : "No extra networks found — you can still use “Same WiFi as channel” above."
+      });
+      if (result.connected && !selectedWifiName) {
+        selectWifiNetwork(result.connected);
+      } else if (!selectedWifiName) {
+        selectWifiNetwork("channel-wifi");
       }
-      list.innerHTML = `<div class="pick-item warn">${result.message || "No networks found."}</div>`;
       return;
     } catch (err) {
-      list.innerHTML = `<div class="pick-item warn">${escapeHtml(err.message)}</div>`;
+      renderWifiPickList({
+        topHint: err.message || "WiFi scan failed.",
+        bottomHint: "Use “Same WiFi as channel” above to connect with other phones."
+      });
+      if (!selectedWifiName) selectWifiNetwork("channel-wifi");
       return;
     }
   }
 
-  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  const onWifi = conn?.type === "wifi";
   const hint = getNetworkHint();
-  lastWifiScanNetworks = onWifi ? ["Current WiFi (browser)"] : [];
-  lastWifiConnected = onWifi ? "Current WiFi (browser)" : "";
-
-  list.innerHTML = `
-    <div class="pick-item warn">${escapeHtml(hint)}</div>
-    <div class="pick-item${selectedWifiName === "channel-wifi" ? " active" : ""}" data-wifi="channel-wifi">Same WiFi as channel (tap to select)</div>
-    <div class="pick-item warn">Channel: ${escapeHtml(channelName)}. Full list: Windows app.</div>
-  `;
-  list.querySelectorAll("[data-wifi]").forEach((el) => {
-    el.addEventListener("click", () => selectWifiNetwork(el.getAttribute("data-wifi")));
+  lastWifiScanNetworks = [];
+  lastWifiConnected = "";
+  renderWifiPickList({
+    topHint: hint,
+    bottomHint: "After selecting WiFi, open Channel to search or join nearby channels."
   });
+  if (!selectedWifiName) selectWifiNetwork("channel-wifi");
 }
 
 function cancelNameEdit() {
