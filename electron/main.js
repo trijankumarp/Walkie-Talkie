@@ -6,7 +6,8 @@ const { promisify } = require("util");
 const execAsync = promisify(exec);
 const ROOT = path.join(__dirname, "..");
 
-app.commandLine.appendSwitch("enable-features", "WebBluetooth");
+app.commandLine.appendSwitch("enable-features", "WebBluetooth,WebBluetoothNewPermissionsBackend");
+app.commandLine.appendSwitch("enable-web-bluetooth");
 
 function createWindow() {
   const win = new BrowserWindow({

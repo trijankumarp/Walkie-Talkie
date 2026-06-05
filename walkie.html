@@ -81,7 +81,19 @@
       transition: all 0.2s;
     }
     .channel-item:hover { background: #333; }
+    .channel-item.active {
+      background: #1a3d2e;
+      border: 1px solid #00cc66;
+      box-shadow: 0 0 12px rgba(0, 204, 102, 0.25);
+    }
     .channel-name { flex: 1; font-weight: 500; }
+    .channel-empty {
+      text-align: center;
+      color: #666;
+      padding: 20px 12px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
     .delete-btn { 
       background: #ff4444; 
       color: white; 
@@ -116,26 +128,101 @@
       gap: 10px; 
       margin: 12px 0; 
     }
-    .ptt { 
-      height: 140px; 
-      width: 140px; 
-      background: linear-gradient(145deg, #cc0000, #990000); 
-      color: white; 
-      font-size: 19px; 
-      font-weight: 700; 
-      display: flex; 
-      align-items: center; 
-      justify-content: center; 
-      border-radius: 50%; 
-      margin: 30px auto; 
-      box-shadow: 0 10px 30px rgba(204, 0, 0, 0.4);
-      transition: all 0.1s;
-      user-select: none;
+    .ptt-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 28px 0 20px;
+      padding: 8px 0;
     }
-    .ptt:active { 
-      background: linear-gradient(145deg, #00cc66, #009955); 
-      transform: scale(0.95); 
-      box-shadow: 0 5px 15px rgba(0, 204, 102, 0.5);
+    .ptt-ring {
+      position: relative;
+      width: 200px;
+      height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ptt-ring::before,
+    .ptt-ring::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 2px solid rgba(90, 160, 255, 0.35);
+      animation: siri-ring 2.4s ease-out infinite;
+    }
+    .ptt-ring::after {
+      animation-delay: 1.2s;
+    }
+    .ptt-orb {
+      width: 168px;
+      height: 168px;
+      border-radius: 50%;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      background: radial-gradient(circle at 32% 28%, #7eb8ff 0%, #3b82f6 35%, #1d4ed8 62%, #0f172a 100%);
+      box-shadow:
+        0 0 50px rgba(59, 130, 246, 0.55),
+        0 0 100px rgba(59, 130, 246, 0.2),
+        inset 0 -8px 24px rgba(0, 0, 0, 0.35),
+        inset 0 8px 20px rgba(255, 255, 255, 0.12);
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+      user-select: none;
+      cursor: pointer;
+    }
+    .ptt-orb.talking {
+      background: radial-gradient(circle at 32% 28%, #6ee7b7 0%, #10b981 38%, #047857 65%, #022c22 100%);
+      box-shadow:
+        0 0 60px rgba(16, 185, 129, 0.7),
+        0 0 120px rgba(16, 185, 129, 0.35),
+        inset 0 -8px 24px rgba(0, 0, 0, 0.3);
+      animation: siri-breathe 0.9s ease-in-out infinite;
+    }
+    .ptt-orb:active { transform: scale(0.96); }
+    .ptt-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+    .ptt-text {
+      color: rgba(255, 255, 255, 0.95);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+    }
+    .ptt-hint {
+      margin-top: 14px;
+      font-size: 13px;
+      color: #666;
+      text-align: center;
+    }
+    @keyframes siri-ring {
+      0% { transform: scale(0.85); opacity: 0.7; }
+      100% { transform: scale(1.35); opacity: 0; }
+    }
+    @keyframes siri-breathe {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+    }
+    .btn-connect {
+      background: #2563eb;
+    }
+    .btn-connect:hover { background: #3b82f6; }
+    .btn-disconnect {
+      background: #444;
+      margin-top: 8px;
     }
     .section-title {
       color: #00ff88;
@@ -270,40 +357,44 @@
 
     <!-- Main UI -->
     <div id="mainUI" style="display:none;">
-      <button class="btn" onclick="scanBluetooth()">1. Bluetooth Devices Scan</button>
-      <div class="list" id="btList">Bluetooth devices will appear here...</div>
-
-      <button class="btn" onclick="scanWiFi()">2. Same WiFi — Team Connect</button>
-      <div class="list" id="wifiList">
-        <div class="item warn">Browser cannot scan WiFi devices (security limit — not a bug)</div>
-        <div class="item">Tap the green button above for team steps</div>
-      </div>
-
-      <div class="status" id="connStatus">No Connection</div>
-
       <div class="section-title">Channels</div>
-      
-      <!-- Add New Channel -->
       <div class="add-channel">
-        <input type="text" id="newChannelName" placeholder="New Channel Name (e.g. Team B)">
-        <button class="btn" style="width:auto; padding:14px 24px;" onclick="addNewChannel()">+ ADD</button>
+        <input type="text" id="newChannelName" placeholder="Create channel name (e.g. Team A)">
+        <button class="btn" style="width:auto; padding:14px 24px;" onclick="addNewChannel()">+ CREATE</button>
       </div>
-
       <div class="channel-list" id="channelList"></div>
 
-      <button class="btn" onclick="toggleMute()">3. Mute / Unmute</button>
-      <div id="muteStatus" style="text-align:center; color:#ffcc00; font-weight:500; margin:8px 0;">🔊 Unmuted</div>
-
-      <!-- Professional PTT -->
-      <div class="ptt" id="pttBtn" 
-           onmousedown="startTalk()" 
-           onmouseup="stopTalk()" 
-           ontouchstart="startTalk()" 
-           ontouchend="stopTalk()">
-        PRESS TO TALK
+      <div class="ptt-section">
+        <div class="ptt-ring">
+          <div class="ptt-orb" id="pttBtn"
+               onmousedown="startTalk()"
+               onmouseup="stopTalk()"
+               onmouseleave="stopTalk()"
+               ontouchstart="startTalk(event)"
+               ontouchend="stopTalk(event)">
+            <div class="ptt-icon" id="pttIcon">🎙</div>
+            <span class="ptt-text" id="pttLabel">Hold to talk</span>
+          </div>
+        </div>
+        <p class="ptt-hint" id="pttHint">Select or create a channel first</p>
       </div>
 
-      <button class="btn" style="background:#444;" onclick="logout()">LOGOUT</button>
+      <div class="section-title">Connect</div>
+      <button class="btn btn-connect" onclick="scanBluetooth()">Bluetooth Scan & Connect</button>
+      <div class="list" id="btList">Tap above to pick a Bluetooth device</div>
+      <button class="btn btn-disconnect" id="btnBtDisconnect" style="display:none;" onclick="disconnectBluetooth()">Disconnect Bluetooth</button>
+
+      <button class="btn" onclick="scanWiFi()">Team WiFi Connect</button>
+      <div class="list" id="wifiList">
+        <div class="item">Tap above for WiFi / team steps</div>
+      </div>
+
+      <div class="status" id="connStatus">No connection</div>
+
+      <button class="btn" onclick="toggleMute()">Mute / Unmute</button>
+      <div id="muteStatus" style="text-align:center; color:#ffcc00; font-weight:500; margin:8px 0;">Unmuted</div>
+
+      <button class="btn" style="background:#444;" onclick="logout()">Logout</button>
     </div>
   </div>
 
