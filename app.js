@@ -86,6 +86,7 @@ let selectedBtId = null;
 let savedBtDevices = [];
 let nearbyChannels = [];
 let nearbyLoading = false;
+let nearbySearchError = "";
 let nearbyRefreshTimer = null;
 let channelHeartbeatTimer = null;
 let channelDb = null;
@@ -1502,12 +1503,14 @@ async function refreshNearbyChannels() {
   if (!wifiKey || !isLoggedIn) {
     nearbyChannels = [];
     nearbyLoading = false;
+    nearbySearchError = "";
     if (channelPanelOpen) renderChannels();
     return;
   }
   const db = getChannelDb();
   if (!db) return;
   nearbyLoading = true;
+  nearbySearchError = "";
   if (channelPanelOpen) renderChannels();
   try {
     const snap = await getDocs(
@@ -1531,6 +1534,12 @@ async function refreshNearbyChannels() {
   } catch (err) {
     console.warn("Nearby channel search failed", err);
     nearbyChannels = [];
+    if (err?.code === "permission-denied") {
+      nearbySearchError =
+        "Firestore access denied. Enable Firestore in Firebase Console and deploy firestore.rules from this project.";
+    } else {
+      nearbySearchError = "Could not load nearby channels. Check internet and try again.";
+    }
   }
   nearbyLoading = false;
   if (channelPanelOpen) renderChannels();
@@ -1550,6 +1559,7 @@ function stopChannelWifiSync() {
   channelHeartbeatTimer = null;
   nearbyChannels = [];
   nearbyLoading = false;
+  nearbySearchError = "";
 }
 
 function appendChannelEmpty(container, html) {
@@ -1654,6 +1664,8 @@ function renderChannels() {
     );
   } else if (nearbyLoading) {
     appendChannelEmpty(container, "Searching channels on your WiFi…");
+  } else if (nearbySearchError) {
+    appendChannelEmpty(container, escapeHtml(nearbySearchError));
   }
 
   if (channels.length && (!currentChannel || !channels.some((c) => c.id === currentChannel))) {
