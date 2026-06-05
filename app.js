@@ -316,18 +316,33 @@ function normalizeNameFields(firstName, lastName) {
   return { firstName: first, lastName: last };
 }
 
+function sanitizeFirstNameInput(elOrId) {
+  const el = typeof elOrId === "string" ? document.getElementById(elOrId) : elOrId;
+  if (!el) return "";
+  const cleaned = stripSpacesFromFirstName(el.value);
+  if (el.value !== cleaned) el.value = cleaned;
+  return cleaned;
+}
+
 function bindNoSpaceFirstName(...ids) {
   ids.forEach((id) => {
     const el = document.getElementById(id);
-    if (!el || el.dataset.noSpaceBound) return;
-    el.dataset.noSpaceBound = "1";
-    const clean = () => {
-      const cleaned = stripSpacesFromFirstName(el.value);
-      if (el.value !== cleaned) el.value = cleaned;
-    };
+    if (!el) return;
+    const clean = () => sanitizeFirstNameInput(el);
+    el.setAttribute("pattern", "[^\\s]+");
+    el.setAttribute("title", "First name cannot contain spaces");
+    el.setAttribute("autocomplete", "off");
     el.addEventListener("input", clean);
+    el.addEventListener("blur", clean);
+    el.addEventListener("compositionend", clean);
+    el.addEventListener("beforeinput", (e) => {
+      if (e.data && /\s/.test(e.data)) e.preventDefault();
+    });
     el.addEventListener("keydown", (e) => {
       if (e.key === " " || e.code === "Space") e.preventDefault();
+    });
+    el.addEventListener("keypress", (e) => {
+      if (e.key === " " || e.charCode === 32) e.preventDefault();
     });
     el.addEventListener("paste", (e) => {
       e.preventDefault();
@@ -335,9 +350,11 @@ function bindNoSpaceFirstName(...ids) {
       const start = el.selectionStart ?? el.value.length;
       const end = el.selectionEnd ?? el.value.length;
       el.value = el.value.slice(0, start) + text + el.value.slice(end);
-      el.setSelectionRange(start + text.length, start + text.length);
+      const pos = start + text.length;
+      el.setSelectionRange(pos, pos);
       clean();
     });
+    clean();
   });
 }
 
@@ -395,7 +412,9 @@ function toggleSettingsEditor(key) {
   row?.classList.add("expanded");
 
   fillProfileForm();
-  bindNoSpaceFirstName("profileFirstName");
+  if (key === "name") {
+    bindNoSpaceFirstName("profileFirstName");
+  }
   if (key === "delete") setupDeleteAccountEditor();
   if (key === "permissions") renderAppPermissions();
   if (key === "photo") {
@@ -447,7 +466,7 @@ function buildSettingsEditorHtml(key) {
     name: `
       <div class="name-edit-panel">
         <label class="profile-label">First name</label>
-        <input type="text" id="profileFirstName" class="profile-input" placeholder="First name" autocomplete="given-name">
+        <input type="text" id="profileFirstName" class="profile-input" placeholder="First name (no spaces)" autocomplete="off" spellcheck="false" inputmode="text" pattern="[^\\s]+" title="No spaces in first name" onkeydown="if(event.key===' ')event.preventDefault()" oninput="sanitizeFirstNameInput(this)">
         <label class="profile-label">Last name</label>
         <input type="text" id="profileLastName" class="profile-input" placeholder="Last name" autocomplete="family-name">
         <div class="name-visibility">
@@ -1022,6 +1041,12 @@ function fillProfileForm() {
     names.lastName = parsed.lastName;
   }
   const normalized = normalizeNameFields(names.firstName, names.lastName);
+  if (
+    uid &&
+    (normalized.firstName !== names.firstName || normalized.lastName !== names.lastName)
+  ) {
+    saveUserNames(uid, normalized.firstName, normalized.lastName);
+  }
 
   if (first) first.value = normalized.firstName || "";
   if (last) last.value = normalized.lastName || "";
@@ -1961,6 +1986,7 @@ Object.assign(window, {
   toggleSettingsPanel,
   toggleSettingsEditor,
   closeSettingsEditor,
+  sanitizeFirstNameInput,
   cancelNameEdit,
   confirmDeleteAccount,
   pickAvatarGallery,
