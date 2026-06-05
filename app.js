@@ -287,8 +287,9 @@ function renderSettingsList() {
   );
 
   setVal("settingsLanguageValue", extra.language || "English");
-  setVal("settingsHomeValue", extra.homeAddress || "Not set");
-  setVal("settingsWorkValue", extra.workAddress || "Not set");
+
+  const userId = getUserId(uid) || suggestUserIdFromEmail(loggedInUser.email);
+  setVal("settingsUserIdValue", userId ? `@${userId}` : "Not set");
 
   const pwdChanged = localStorage.getItem(`${PASSWORD_CHANGED_KEY}_${uid}`);
   setVal("settingsPasswordValue", formatPasswordChanged(pwdChanged));
@@ -311,6 +312,28 @@ function normalizeNameFields(firstName, lastName) {
 function validateFirstName(firstName) {
   if (!(firstName || "").trim()) return "Please enter first name.";
   return null;
+}
+
+function normalizeUserId(raw) {
+  return (raw || "").trim().toLowerCase().replace(/\s+/g, "");
+}
+
+function validateUserId(userId) {
+  const id = normalizeUserId(userId);
+  if (!id) return "Please enter user ID.";
+  if (!/^[a-z0-9._]{3,24}$/.test(id)) {
+    return "User ID: 3–24 characters, letters, numbers, . or _ only.";
+  }
+  return null;
+}
+
+function getUserId(uid) {
+  return loadProfileExtra(uid).userId || "";
+}
+
+function suggestUserIdFromEmail(email) {
+  const local = (email || "").split("@")[0] || "";
+  return normalizeUserId(local.replace(/[^a-z0-9._]/gi, "")).slice(0, 24);
 }
 
 function isSpaceKey(e) {
@@ -413,6 +436,11 @@ function buildSettingsEditorHtml(key) {
       </div>
       <p class="profile-hint">Choose a photo, take one, or pick an emoji.</p>
       <div id="emojiGridMount"></div>`,
+    userid: `
+      <label class="profile-label">User ID</label>
+      <input type="text" id="profileUserId" class="profile-input" placeholder="e.g. trijan_kumar" autocomplete="username" autocapitalize="off" value="${escapeHtml(extra.userId || "")}">
+      <p class="profile-hint">3–24 characters: letters, numbers, dot, underscore. Shown as @userid.</p>
+      <button type="button" class="btn btn-sm" onclick="saveProfileUserId()">Save</button>`,
     name: `
       <div class="name-edit-panel">
         <label class="profile-label">First name</label>
@@ -468,14 +496,6 @@ function buildSettingsEditorHtml(key) {
       <label class="profile-label">Language</label>
       <select id="profileLanguage" class="profile-input">${langOpts}</select>
       <button type="button" class="btn btn-sm" onclick="saveProfileLanguage()">Save</button>`,
-    home: `
-      <label class="profile-label">Home address</label>
-      <textarea id="profileHome" class="profile-input" rows="3" placeholder="Street, city, postal code">${escapeHtml(extra.homeAddress || "")}</textarea>
-      <button type="button" class="btn btn-sm" onclick="saveProfileAddress('home')">Save</button>`,
-    work: `
-      <label class="profile-label">Work address</label>
-      <textarea id="profileWork" class="profile-input" rows="3" placeholder="Office address">${escapeHtml(extra.workAddress || "")}</textarea>
-      <button type="button" class="btn btn-sm" onclick="saveProfileAddress('work')">Save</button>`,
     password: `
       <p class="profile-hint">${escapeHtml(formatPasswordChanged(localStorage.getItem(`${PASSWORD_CHANGED_KEY}_${uid}`)))}</p>
       <label class="profile-label">Current password</label>
@@ -543,16 +563,13 @@ function saveProfileLanguage() {
   closeSettingsEditor();
 }
 
-function saveProfileAddress(which) {
-  const map = {
-    home: { id: "profileHome", key: "homeAddress" },
-    work: { id: "profileWork", key: "workAddress" }
-  };
-  const cfg = map[which];
-  if (!cfg) return;
-  const val = document.getElementById(cfg.id)?.value.trim() || "";
-  saveProfileExtra(getProfileUid(), { [cfg.key]: val });
-  setProfileMsg("Address saved.");
+function saveProfileUserId() {
+  const raw = document.getElementById("profileUserId")?.value || "";
+  const userId = normalizeUserId(raw);
+  const err = validateUserId(userId);
+  if (err) return setProfileMsg(err, true);
+  saveProfileExtra(getProfileUid(), { userId });
+  setProfileMsg("User ID saved.");
   closeSettingsEditor();
 }
 
@@ -1183,6 +1200,11 @@ function buildLoggedInUser(user) {
 function enterApp(user) {
   isLoggedIn = true;
   loggedInUser = buildLoggedInUser(user);
+  const uid = loggedInUser.uid;
+  if (uid && !getUserId(uid)) {
+    const suggested = suggestUserIdFromEmail(loggedInUser.email);
+    if (suggested.length >= 3) saveProfileExtra(uid, { userId: suggested });
+  }
   loadChannels();
   loadFriends();
   loadBtDevices();
@@ -1223,16 +1245,17 @@ async function signup() {
   const email = document.getElementById("signupEmail").value.trim().toLowerCase();
   const country = document.getElementById("signupCountry")?.value || "+91";
   const mobile = document.getElementById("signupMobile")?.value.trim().replace(/\D/g, "");
+  const userId = normalizeUserId(document.getElementById("signupUserId")?.value || "");
   const gender = document.getElementById("signupGender")?.value || "";
   const birthday = document.getElementById("signupBirthday")?.value || "";
-  const address = document.getElementById("signupAddress")?.value.trim() || "";
-  const workAddress = document.getElementById("signupWorkAddress")?.value.trim() || "";
   const password = document.getElementById("signupPassword").value;
   const confirm = document.getElementById("signupConfirm").value;
 
   const firstErr = validateFirstName(firstName);
   if (firstErr) return setAuthError(firstErr, ["signupFirstName"]);
   if (!lastName) return setAuthError("Please enter last name.", ["signupLastName"]);
+  const userIdErr = validateUserId(userId);
+  if (userIdErr) return setAuthError(userIdErr, ["signupUserId"]);
   if (!email) return setAuthError("Please enter Gmail or email address.", ["signupEmail"]);
   if (!isValidEmail(email))
     return setAuthError("Wrong email format. Use you@gmail.com", ["signupEmail"]);
@@ -1241,7 +1264,6 @@ async function signup() {
   }
   if (!gender) return setAuthError("Please select gender.", ["signupGender"]);
   if (!birthday) return setAuthError("Please enter birthday.", ["signupBirthday"]);
-  if (!address) return setAuthError("Please enter your address.", ["signupAddress"]);
   if (password.length < 6) return setAuthError("Password must be at least 6 characters.", ["signupPassword"]);
   if (password !== confirm)
     return setAuthError("Passwords do not match.", ["signupPassword", "signupConfirm"]);
@@ -1252,12 +1274,7 @@ async function signup() {
     const user = await window.mosAuth.signupEmail(firstName, lastName, email, password);
     saveUserNames(user.uid, firstName, lastName);
     saveMobileProfile(user.uid, country, mobile, false);
-    saveProfileExtra(user.uid, {
-      gender,
-      birthday,
-      homeAddress: address,
-      ...(workAddress ? { workAddress } : {})
-    });
+    saveProfileExtra(user.uid, { userId, gender, birthday });
     alert("Account created! Check your email to verify (✓ will show in Settings).");
     showAuthTab("login");
     document.getElementById("loginEmail").value = email;
@@ -1953,7 +1970,7 @@ Object.assign(window, {
   saveProfileGender,
   saveProfileBirthday,
   saveProfileLanguage,
-  saveProfileAddress,
+  saveProfileUserId,
   refreshAppPermissions,
   resendEmailVerification,
   setupBiometric,
