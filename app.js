@@ -2146,9 +2146,7 @@ async function refreshWifiList() {
           ? ""
           : "No extra networks found — you can still use “Same WiFi as channel” above."
       });
-      if (result.connected && !selectedWifiName) {
-        selectWifiNetwork(result.connected);
-      } else if (!selectedWifiName) {
+      if (!selectedWifiName) {
         selectWifiNetwork("channel-wifi");
       }
       return;
