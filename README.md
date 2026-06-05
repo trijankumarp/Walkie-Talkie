@@ -2,13 +2,13 @@
 
 Offline-friendly team walkie PWA with **real Firebase login** (email + Google).
 
-**Firebase project:** `walkietalkie-mos` (walkie talkie)
+**Firebase project:** `projectm-chinna` (Walkie-Talkie web app)
 
 ---
 
 ## 1. Firebase setup
 
-1. [Firebase Console](https://console.firebase.google.com/) → project **walkie talkie**
+1. [Firebase Console](https://console.firebase.google.com/) → project **projectm-chinna**
 2. **Build → Authentication** → enable **Email/Password** + **Google**
 3. **Project settings → Your apps → Web** (`</>`) → register app → copy `firebaseConfig`
 4. Local dev:
@@ -18,7 +18,7 @@ Offline-friendly team walkie PWA with **real Firebase login** (email + Google).
    Paste `apiKey`, `messagingSenderId`, `appId` from console.
 5. **Authentication → Settings → Authorized domains** → add:
    - `localhost`
-   - `walkietalkie-mos.firebaseapp.com` (usually auto)
+   - `projectm-chinna.firebaseapp.com` (usually auto)
    - Your **Vercel** domain, e.g. `mos-walkie.vercel.app`
    - `*.vercel.app` is not allowed — add each deployment URL you use
 
@@ -53,9 +53,10 @@ git push -u origin main
    | Name | Example |
    |------|---------|
    | `FIREBASE_API_KEY` | from Firebase console |
-   | `FIREBASE_AUTH_DOMAIN` | `walkietalkie-mos.firebaseapp.com` |
-   | `FIREBASE_PROJECT_ID` | `walkietalkie-mos` |
-   | `FIREBASE_STORAGE_BUCKET` | `walkietalkie-mos.firebasestorage.app` |
+   | `FIREBASE_AUTH_DOMAIN` | `projectm-chinna.firebaseapp.com` |
+   | `FIREBASE_PROJECT_ID` | `projectm-chinna` |
+   | `FIREBASE_STORAGE_BUCKET` | `projectm-chinna.firebasestorage.app` |
+   | `FIREBASE_MESSAGING_SENDER_ID` | `430423708331` |
    | `FIREBASE_MESSAGING_SENDER_ID` | from Firebase console |
    | `FIREBASE_APP_ID` | from Firebase console |
 
