@@ -303,7 +303,9 @@ function updatePttHint() {
     ? `Hold to talk on ${label}`
     : window.offlineTalk?.isActive?.()
       ? "Hold to talk — offline (no internet)"
-      : "Menu → Bluetooth → No internet setup, or Channel";
+      : isOnlineWalkieMode()
+        ? "Internet on — Channel select chesi Hold to talk"
+        : "Menu → Bluetooth or Channel";
 }
 
 function openMenu() {
@@ -1327,6 +1329,7 @@ async function connectBluetoothAudio() {
 }
 
 function maybeOpenBluetoothFirst() {
+  if (isOnlineWalkieMode()) return;
   if (sessionStorage.getItem(BT_INTRO_KEY)) return;
   sessionStorage.setItem(BT_INTRO_KEY, "1");
   openMenu();
@@ -1516,7 +1519,12 @@ async function enterApp(user) {
   if (selectedWifiName) setWifiStatus(true, selectedWifiName);
   renderBluetoothList();
   startChannelWifiSync();
-  maybeOpenBluetoothFirst();
+  updateOnlineWalkieUi();
+  if (!isOnlineWalkieMode()) maybeOpenBluetoothFirst();
+  else {
+    openMenu();
+    toggleChannelPanel();
+  }
 }
 
 window.onFirebaseUser = function (firebaseUser) {
@@ -1669,13 +1677,55 @@ function applyBtChannelCode() {
   if (channelPanelOpen) renderChannels();
 }
 
+function isOnlineWalkieMode() {
+  return typeof navigator !== "undefined" && navigator.onLine === true;
+}
+
 function getWifiDiscoveryKey() {
   if (btChannelCode) return `bt-${btChannelCode}`;
+  if (isOnlineWalkieMode()) {
+    const ch = getActiveChannel();
+    return ch?.channelId ? `net-${ch.channelId}` : null;
+  }
   if (!selectedWifiName) return null;
   const n = selectedWifiName.trim();
   if (!n) return null;
   if (n === "Current WiFi (browser)") return "channel-wifi";
   return n.toLowerCase();
+}
+
+async function ensureOnlineMic() {
+  if (pttMediaStream) return true;
+  if (!navigator.mediaDevices?.getUserMedia) return false;
+  try {
+    pttMediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true },
+      video: false
+    });
+    pttMediaStream.getAudioTracks().forEach((t) => {
+      t.enabled = false;
+    });
+    return true;
+  } catch {
+    alert("Allow microphone to talk.");
+    return false;
+  }
+}
+
+function updateOnlineWalkieUi() {
+  const hint = document.getElementById("pttHint");
+  if (hint && isOnlineWalkieMode() && !window.offlineTalk?.isActive?.()) {
+    hint.textContent = getActiveChannelName()
+      ? "Internet on — Hold to talk"
+      : "Internet on — open Channel (no WiFi setup needed)";
+  }
+  const offlineBox = document.querySelector(".offline-talk-box");
+  if (offlineBox) offlineBox.style.display = isOnlineWalkieMode() ? "none" : "block";
+  const wifiChip = document.getElementById("wifiChip");
+  if (wifiChip && isOnlineWalkieMode()) {
+    wifiChip.textContent = "Internet: On";
+    wifiChip.classList.add("on");
+  }
 }
 
 function getFirestoreDb() {
@@ -1957,8 +2007,10 @@ function selectLocalChannel(id) {
   renderChannels();
   refreshStatusBar();
   updatePttHint();
+  updateOnlineWalkieUi();
   void saveCurrentChannelToCloud();
   publishActiveChannelToWifi();
+  refreshNearbyChannels();
   closeMenu();
 }
 
@@ -2047,7 +2099,9 @@ function renderChannels() {
   if (!wifiKey && !window.offlineTalk?.isActive?.()) {
     appendChannelEmpty(
       container,
-      "WiFi details not needed. Use <strong>Bluetooth</strong> → Walkie code, or <strong>No internet</strong> setup below."
+      isOnlineWalkieMode()
+        ? "Internet is on — create or select a channel above. No WiFi or Bluetooth setup needed."
+        : "No internet — use <strong>Bluetooth</strong> → Walkie code, or offline setup below."
     );
   } else if (nearbyLoading) {
     appendChannelEmpty(container, "Searching channels on your WiFi…");
@@ -2072,7 +2126,10 @@ function renderChannels() {
   }
 
   if (nearbyVisible.length) {
-    appendChannelSectionLabel(container, btChannelCode ? "Same Bluetooth code" : "On same WiFi");
+    appendChannelSectionLabel(
+      container,
+      isOnlineWalkieMode() ? "On same channel (internet)" : btChannelCode ? "Same Bluetooth code" : "On same WiFi"
+    );
     nearbyVisible.forEach((ch) => renderNearbyChannelItem(container, ch));
   }
 
@@ -2652,6 +2709,20 @@ async function startTalk(e) {
     toggleChannelPanel();
     return;
   }
+  if (isOnlineWalkieMode()) {
+    const ok = await ensureOnlineMic();
+    if (!ok) return;
+    pttMediaStream.getAudioTracks().forEach((t) => {
+      t.enabled = true;
+    });
+    publishActiveChannelToWifi();
+    isTalking = true;
+    setPttVisual(true);
+    const ch = getActiveChannelTalkLabel() || getActiveChannelName();
+    const el = document.getElementById("statusMain");
+    if (el) el.innerHTML = `<span class="accent">Live · ${escapeHtml(ch)}</span>`;
+    return;
+  }
   if (!isBluetoothReady()) {
     openMenu();
     toggleBluetoothMenu(true);
@@ -2661,6 +2732,9 @@ async function startTalk(e) {
     const ok = await connectBluetoothAudio();
     if (!ok) return;
   }
+  pttMediaStream.getAudioTracks().forEach((t) => {
+    t.enabled = true;
+  });
   isTalking = true;
   setPttVisual(true);
   const ch = getActiveChannelTalkLabel() || getActiveChannelName();
@@ -2676,6 +2750,10 @@ function stopTalk(e) {
   if (!isTalking) return;
   if (window.offlineTalk?.isActive?.()) {
     window.offlineTalk.stopTransmit();
+  } else if (pttMediaStream) {
+    pttMediaStream.getAudioTracks().forEach((t) => {
+      t.enabled = false;
+    });
   }
   isTalking = false;
   setPttVisual(false);
@@ -2753,6 +2831,18 @@ function boot() {
   );
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeMenu();
+  });
+  window.addEventListener("online", () => {
+    if (!isLoggedIn) return;
+    updateOnlineWalkieUi();
+    publishAllChannelsToWifi();
+    refreshNearbyChannels();
+    renderChannels();
+  });
+  window.addEventListener("offline", () => {
+    if (!isLoggedIn) return;
+    updateOnlineWalkieUi();
+    renderBluetoothList();
   });
 }
 
