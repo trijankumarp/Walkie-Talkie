@@ -67,12 +67,6 @@ function showWifiInstructions() {
   wifi?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-function updateActiveTeamBadge() {
-  const el = document.getElementById("activeTeam");
-  if (!el) return;
-  el.textContent = getActiveChannelName() || "No team";
-}
-
 function updateBtChip(connected, name) {
   const chip = document.getElementById("btChip");
   if (!chip) return;
@@ -208,7 +202,6 @@ function refreshStatusBar() {
   el.innerHTML = ch
     ? `${loggedInUser.name} · <span class="accent">${ch}</span>`
     : `${loggedInUser.name} · <span style="color:var(--text-faint)">Select a team in menu</span>`;
-  updateActiveTeamBadge();
 }
 
 function enterApp(user) {
@@ -326,7 +319,6 @@ function renderChannels() {
       '<div class="channel-empty">No teams yet.<br>Create one above.</div>';
     currentChannel = null;
     updatePttHint();
-    updateActiveTeamBadge();
     return;
   }
 
@@ -355,7 +347,6 @@ function renderChannels() {
     container.appendChild(div);
   });
   updatePttHint();
-  updateActiveTeamBadge();
 }
 
 function deleteChannel(id) {
