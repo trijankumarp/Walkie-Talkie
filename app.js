@@ -373,6 +373,7 @@ function bindFirstNameField(...ids) {
     el.addEventListener("keydown", (e) => {
       if (e.key === " " || e.code === "Space") {
         e.preventDefault();
+        e.stopPropagation();
         clean();
         focusLastNameWithSpace(getLastNameInputForFirst(el));
       }
@@ -1942,6 +1943,14 @@ function setPttVisual(talking) {
   if (label) label.textContent = talking ? "Transmitting…" : "Hold to talk";
 }
 
+function isTypingInFormField() {
+  const el = document.activeElement;
+  if (!el) return false;
+  const tag = el.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return !!el.isContentEditable;
+}
+
 function startTalk(e) {
   if (e?.cancelable) e.preventDefault();
   if (!getActiveChannelName()) {
@@ -2012,13 +2021,13 @@ function boot() {
   }
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === " " && isLoggedIn) {
+    if (e.key === " " && isLoggedIn && !isTypingInFormField()) {
       e.preventDefault();
       startTalk();
     }
   });
   document.addEventListener("keyup", (e) => {
-    if (e.key === " " && isLoggedIn) stopTalk();
+    if (e.key === " " && isLoggedIn && !isTypingInFormField()) stopTalk();
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeMenu();
