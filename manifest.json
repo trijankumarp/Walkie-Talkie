@@ -1,7 +1,7 @@
 {
-  "name": "M-OS Walkie Talkie",
+  "name": "Walkie Talkie | M-OS",
   "short_name": "Walkie Talkie",
-  "description": "Offline Bluetooth/WiFi Walkie for Team Communication - M-OS Project",
+  "description": "Team walkie-talkie with Firebase login - M-OS Project",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#111111",

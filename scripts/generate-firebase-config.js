@@ -3,6 +3,7 @@ const path = require("path");
 
 const root = path.join(__dirname, "..");
 const outFile = path.join(root, "firebase-config.js");
+const deployFile = path.join(root, "firebase-config.deploy.js");
 
 const config = {
   apiKey: process.env.FIREBASE_API_KEY,
@@ -10,29 +11,44 @@ const config = {
   projectId: process.env.FIREBASE_PROJECT_ID || "walkietalkie-mos",
   storageBucket:
     process.env.FIREBASE_STORAGE_BUCKET || "walkietalkie-mos.firebasestorage.app",
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID
+  messagingSenderId:
+    process.env.FIREBASE_MESSAGING_SENDER_ID || "905289525416",
+  appId: process.env.FIREBASE_APP_ID,
+  measurementId: process.env.FIREBASE_MEASUREMENT_ID || "G-H97RRNDT3E"
 };
 
-const missing = ["apiKey", "messagingSenderId", "appId"].filter((k) => !config[k]);
+const missing = ["apiKey", "appId"].filter((k) => !config[k]);
 
-if (missing.length) {
-  const localFile = outFile;
-  if (fs.existsSync(localFile) && !process.env.VERCEL) {
-    console.log("Build skipped: using existing firebase-config.js (local dev).");
-    process.exit(0);
-  }
-  console.error(
-    "Missing Firebase env vars:",
-    missing.join(", "),
-    "\nSet them in Vercel → Settings → Environment Variables, or copy firebase-config.example.js locally."
-  );
-  process.exit(process.env.VERCEL ? 1 : 0);
+if (!missing.length) {
+  writeConfig(config, "env vars");
+  process.exit(0);
 }
 
-const content =
-  "// Auto-generated at build — do not edit on Vercel.\n" +
-  `window.FIREBASE_CONFIG = ${JSON.stringify(config, null, 2)};\n`;
+if (fs.existsSync(deployFile)) {
+  fs.copyFileSync(deployFile, outFile);
+  console.log("Generated firebase-config.js from firebase-config.deploy.js");
+  process.exit(0);
+}
 
-fs.writeFileSync(outFile, content);
-console.log("Generated firebase-config.js for project:", config.projectId);
+if (fs.existsSync(outFile) && !process.env.VERCEL) {
+  console.log("Build skipped: using existing firebase-config.js (local).");
+  process.exit(0);
+}
+
+console.error(
+  "Missing Firebase config.\n",
+  "Set Vercel env: FIREBASE_API_KEY, FIREBASE_APP_ID\n",
+  "Or add firebase-config.deploy.js / firebase-config.js locally."
+);
+process.exit(process.env.VERCEL ? 1 : 0);
+
+function writeConfig(cfg, source) {
+  const cleaned = Object.fromEntries(
+    Object.entries(cfg).filter(([, v]) => v != null && v !== "")
+  );
+  const content =
+    `// Auto-generated from ${source}\n` +
+    `window.FIREBASE_CONFIG = ${JSON.stringify(cleaned, null, 2)};\n`;
+  fs.writeFileSync(outFile, content);
+  console.log("Generated firebase-config.js for project:", cleaned.projectId);
+}

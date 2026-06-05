@@ -1,90 +1,73 @@
-# M-OS Walkie-Talkie
+# Walkie Talkie (M-OS)
 
-Offline-friendly team walkie PWA with **real Firebase login** (email + Google).
+Team walkie-talkie PWA with **Firebase login** (email + Google).
 
-**Firebase project:** `walkietalkie-mos` (Walkie-Talkie web app)
-
----
-
-## 1. Firebase setup
-
-1. [Firebase Console](https://console.firebase.google.com/) → project **walkie talkie** (`walkietalkie-mos`)
-2. **Build → Authentication** → enable **Email/Password** + **Google**
-3. **Project settings → Your apps → Web** (`</>`) → register app → copy `firebaseConfig`
-4. Local dev:
-   ```powershell
-   copy firebase-config.example.js firebase-config.js
-   ```
-   Paste `apiKey`, `messagingSenderId`, `appId` from console.
-5. **Authentication → Settings → Authorized domains** → add:
-   - `localhost`
-   - `walkietalkie-mos.firebaseapp.com` (usually auto)
-   - Your **Vercel** domain, e.g. `mos-walkie.vercel.app`
-   - `*.vercel.app` is not allowed — add each deployment URL you use
+| Link | URL |
+|------|-----|
+| **Live app** | https://walkie-talkie-kappa.vercel.app |
+| **GitHub** | https://github.com/trijankumarp/Walkie-Talkie |
+| **Firebase** | `walkietalkie-mos` |
 
 ---
 
-## 2. GitHub
+## Folder
 
-```powershell
-cd "C:\Users\trija\Desktop\Work\VS\Walkie-Talkie"
-gh auth login
-gh repo create Walkie-Talkie --public --source=. --remote=origin --push
 ```
-
-If repo already exists:
-
-```powershell
-git remote add origin https://github.com/trijankumarp/Walkie-Talkie.git
-git push -u origin main
+C:\Users\trija\Desktop\Work\VS\Walkie-Talkie
 ```
-
-`firebase-config.js` and `.env` are **not** pushed (secrets stay local / in Vercel).
-
----
-
-## 3. Vercel (deploy from GitHub)
-
-1. Go to [vercel.com](https://vercel.com) → **Add New Project**
-2. **Import** your GitHub repo `Walkie-Talkie`
-3. Framework: **Other** (static site)
-4. **Environment Variables** (from Firebase web app config):
-
-   | Name | Example |
-   |------|---------|
-   | `FIREBASE_API_KEY` | from Firebase console |
-   | `FIREBASE_AUTH_DOMAIN` | `walkietalkie-mos.firebaseapp.com` |
-   | `FIREBASE_PROJECT_ID` | `walkietalkie-mos` |
-   | `FIREBASE_STORAGE_BUCKET` | `walkietalkie-mos.firebasestorage.app` |
-   | `FIREBASE_MESSAGING_SENDER_ID` | `905289525416` |
-   | `FIREBASE_MESSAGING_SENDER_ID` | from Firebase console |
-   | `FIREBASE_APP_ID` | from Firebase console |
-
-5. **Deploy** → open `https://your-project.vercel.app`
-6. Copy that URL → Firebase **Authorized domains** → add it
-7. Every git push to `main` auto-redeploys on Vercel
 
 ---
 
 ## Run locally
 
 ```powershell
-copy firebase-config.example.js firebase-config.js
-# paste keys, then:
-python -m http.server 8080
+cd "C:\Users\trija\Desktop\Work\VS\Walkie-Talkie"
+npm run build
+npm start
 ```
 
 Open: http://localhost:8080/
 
 ---
 
-## Project structure
+## Firebase (one-time)
+
+1. [Firebase Console](https://console.firebase.google.com/) → **walkie talkie** (`walkietalkie-mos`)
+2. **Authentication** → enable **Email/Password** + **Google**
+3. **Authorized domains** → add:
+   - `localhost`
+   - `walkie-talkie-kappa.vercel.app`
+
+Web app config is in `firebase-config.deploy.js` (used for Vercel build).
+
+---
+
+## Vercel deploy
+
+Repo is connected to GitHub. Each push to `main` redeploys.
+
+**Optional** env vars (override deploy config): copy from `vercel.env.import` → Vercel **Settings → Environment Variables → Import .env**
+
+Build uses `firebase-config.deploy.js` if env vars are not set.
+
+---
+
+## Files
 
 | File | Purpose |
 |------|---------|
-| `walkie.html` | Main app UI |
-| `auth.js` | Firebase v12 modular SDK (CDN modules) |
-| `app.js` | App logic + login handlers |
-| `vercel.json` | Vercel build + routing |
-| `scripts/generate-firebase-config.js` | Builds config from env on Vercel |
-| `.env.example` | Env var template |
+| `walkie.html` | UI |
+| `auth.js` | Firebase 12 modular (CDN) |
+| `app.js` | Login + walkie logic |
+| `firebase-config.js` | Local overrides (gitignored) |
+| `firebase-config.deploy.js` | Production Firebase config |
+| `vercel.json` | Vercel build settings |
+
+---
+
+## Stack
+
+- Static HTML / JS (no React)
+- Firebase Auth v12 (`import` from gstatic CDN)
+- `npm install firebase` (optional; CDN used in browser)
+- Vercel static hosting

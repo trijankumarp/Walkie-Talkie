@@ -1,11 +1,12 @@
 {
-  "name": "mos-walkie",
+  "name": "walkie-talkie",
   "version": "1.0.0",
   "private": true,
-  "description": "M-OS Walkie Talkie PWA with Firebase auth",
+  "description": "M-OS Walkie Talkie PWA — Firebase auth, Vercel deploy",
   "scripts": {
     "build": "node scripts/generate-firebase-config.js",
-    "dev": "python -m http.server 8080"
+    "dev": "npm run build && python -m http.server 8080",
+    "start": "python -m http.server 8080"
   },
   "dependencies": {
     "firebase": "^12.14.0"

@@ -29,7 +29,13 @@ let auth = null;
 
 function isConfigured() {
   const c = window.FIREBASE_CONFIG;
-  return c && c.apiKey && !String(c.apiKey).includes("YOUR_");
+  return (
+    c &&
+    c.apiKey &&
+    c.appId &&
+    !String(c.apiKey).includes("YOUR_") &&
+    !String(c.appId).includes("YOUR_")
+  );
 }
 
 function mapError(err) {

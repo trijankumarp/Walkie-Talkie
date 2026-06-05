@@ -4,6 +4,7 @@ node_modules/
 firebase-config.js
 .env
 .env.local
+vercel.env.import
 
 # OS / editor
 .DS_Store
