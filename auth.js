@@ -8,12 +8,21 @@ import {
   updateProfile,
   updateEmail,
   updatePassword,
+  verifyBeforeUpdateEmail,
   reauthenticateWithCredential,
   EmailAuthProvider,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  PhoneAuthProvider,
+  linkWithCredential,
   signInWithPopup,
   GoogleAuthProvider,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+
+const OTP_PENDING_KEY = "walkie_otp_pending_v1";
+let recaptchaVerifier = null;
+let phoneConfirmationResult = null;
 
 const ERROR_MAP = {
   "auth/email-already-in-use": "This email is already registered. Please login.",
@@ -29,6 +38,11 @@ const ERROR_MAP = {
   "auth/network-request-failed": "Network error. Check your connection.",
   "auth/requires-recent-login": "Please logout and login again, then try this change.",
   "auth/invalid-password": "Current password is wrong.",
+  "auth/invalid-verification-code": "Wrong verification code. Try again.",
+  "auth/code-expired": "Code expired. Send a new code.",
+  "auth/invalid-phone-number": "Invalid phone number for selected country.",
+  "auth/captcha-check-failed": "Captcha failed. Refresh and try again.",
+  "auth/account-exists-with-different-credential": "This phone is linked to another account.",
   "auth/configuration-not-found":
     "Firebase Authentication is not enabled. Open Firebase Console → walkietalkie-mos → Build → Authentication → Get started, then enable Email/Password and Google."
 };
@@ -124,6 +138,124 @@ async function changePassword(currentPassword, newPassword) {
   await updatePassword(auth.currentUser, newPassword);
 }
 
+function storePendingOtp(type, target, otp) {
+  const uid = auth?.currentUser?.uid || "anon";
+  sessionStorage.setItem(
+    OTP_PENDING_KEY,
+    JSON.stringify({
+      uid,
+      type,
+      target,
+      otp,
+      exp: Date.now() + 10 * 60 * 1000
+    })
+  );
+}
+
+function readPendingOtp() {
+  try {
+    const raw = sessionStorage.getItem(OTP_PENDING_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (data.exp < Date.now()) {
+      sessionStorage.removeItem(OTP_PENDING_KEY);
+      return null;
+    }
+    const uid = auth?.currentUser?.uid;
+    if (uid && data.uid !== uid) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingOtp() {
+  sessionStorage.removeItem(OTP_PENDING_KEY);
+}
+
+function verifyStoredOtp(code, type, target) {
+  const pending = readPendingOtp();
+  if (!pending || pending.type !== type) return false;
+  if (pending.target !== target) return false;
+  if (String(code).trim() !== pending.otp) return false;
+  clearPendingOtp();
+  return true;
+}
+
+/** Reauth + 6-digit code (demo: returned for UI; production needs email/SMS backend). */
+async function requestEmailChangeOtp(newEmail, currentPassword) {
+  if (!auth?.currentUser) throw new Error("Not signed in.");
+  await reauthWithPassword(currentPassword);
+  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  storePendingOtp("email", newEmail, otp);
+  try {
+    await verifyBeforeUpdateEmail(auth.currentUser, newEmail);
+  } catch {
+    /* still allow OTP step if verify-before-update not enabled */
+  }
+  return { otp, email: newEmail };
+}
+
+async function confirmEmailChangeOtp(newEmail, otpCode, currentPassword) {
+  if (!auth?.currentUser) throw new Error("Not signed in.");
+  if (!verifyStoredOtp(otpCode, "email", newEmail)) {
+    throw Object.assign(new Error("Invalid or expired verification code."), {
+      code: "auth/invalid-verification-code"
+    });
+  }
+  await reauthWithPassword(currentPassword);
+  await updateEmail(auth.currentUser, newEmail);
+}
+
+function getRecaptchaVerifier() {
+  const el = document.getElementById("recaptcha-container");
+  if (!el) throw new Error("reCAPTCHA container missing.");
+  if (!recaptchaVerifier) {
+    recaptchaVerifier = new RecaptchaVerifier(auth, el, { size: "invisible" });
+  }
+  return recaptchaVerifier;
+}
+
+async function sendPhoneOtp(e164Phone) {
+  if (!auth?.currentUser) throw new Error("Not signed in.");
+  phoneConfirmationResult = await signInWithPhoneNumber(
+    auth,
+    e164Phone,
+    getRecaptchaVerifier()
+  );
+}
+
+async function confirmPhoneOtp(otpCode, e164Phone) {
+  if (!auth?.currentUser) throw new Error("Not signed in.");
+  if (phoneConfirmationResult) {
+    const cred = PhoneAuthProvider.credential(
+      phoneConfirmationResult.verificationId,
+      String(otpCode).trim()
+    );
+    try {
+      await linkWithCredential(auth.currentUser, cred);
+    } catch (err) {
+      if (err?.code !== "auth/provider-already-linked") throw err;
+    }
+    phoneConfirmationResult = null;
+    return;
+  }
+  if (!verifyStoredOtp(otpCode, "phone", e164Phone)) {
+    throw Object.assign(new Error("Invalid or expired verification code."), {
+      code: "auth/invalid-verification-code"
+    });
+  }
+}
+
+/** Fallback when Phone Auth is off in Firebase Console. */
+async function requestPhoneChangeOtp(e164Phone, currentPassword) {
+  if (!auth?.currentUser) throw new Error("Not signed in.");
+  await reauthWithPassword(currentPassword);
+  const otp = String(Math.floor(100000 + Math.random() * 900000));
+  storePendingOtp("phone", e164Phone, otp);
+  return { otp, phone: e164Phone };
+}
+
 init();
 
 window.mosAuth = {
@@ -134,9 +266,15 @@ window.mosAuth = {
   loginGoogle,
   logout,
   getCurrentUser,
+  reauthWithPassword,
   updateDisplayName,
   changeEmail,
-  changePassword
+  changePassword,
+  requestEmailChangeOtp,
+  confirmEmailChangeOtp,
+  sendPhoneOtp,
+  confirmPhoneOtp,
+  requestPhoneChangeOtp
 };
 
 window.dispatchEvent(new Event("mosAuthReady"));

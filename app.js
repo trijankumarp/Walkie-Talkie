@@ -996,29 +996,110 @@ async function saveProfileName() {
   }
 }
 
-async function saveProfileEmail() {
+function showOtpBox(id, show) {
+  document.getElementById(id)?.classList.toggle("open", !!show);
+}
+
+function getE164Phone() {
+  const country = document.getElementById("profileCountry")?.value || "+91";
+  const number = document.getElementById("profileMobile")?.value.trim().replace(/\D/g, "");
+  if (!number) return "";
+  return `${country}${number.replace(/^0+/, "")}`;
+}
+
+async function sendEmailChangeOtp() {
   const email = document.getElementById("profileEmail")?.value.trim().toLowerCase();
   const pass = document.getElementById("profileCurrentPass")?.value;
-  if (!email || !isValidEmail(email)) return setProfileMsg("Enter a valid email.", true);
-  if (!pass) return setProfileMsg("Enter current password to change email.", true);
+  if (!email || !isValidEmail(email)) return setProfileMsg("Enter a valid new email.", true);
+  if (!pass) return setProfileMsg("Enter current password first.", true);
+  if (email === loggedInUser?.email?.toLowerCase()) {
+    return setProfileMsg("Enter a different email address.", true);
+  }
   try {
-    await window.mosAuth.changeEmail(email, pass);
-    loggedInUser.email = email;
-    refreshStatusBar();
-    setProfileMsg("Email updated.");
+    const result = await window.mosAuth.requestEmailChangeOtp(email, pass);
+    showOtpBox("emailOtpBox", true);
+    document.getElementById("profileEmailOtp")?.focus();
+    setProfileMsg(
+      `Code sent to ${email}. Check inbox (and verification link). Demo OTP: ${result.otp}`
+    );
   } catch (err) {
     setProfileMsg(window.mosAuth.mapError(err), true);
   }
 }
 
-async function saveProfileMobile() {
-  const number = document.getElementById("profileMobile")?.value.trim();
+async function confirmEmailChange() {
+  const email = document.getElementById("profileEmail")?.value.trim().toLowerCase();
+  const pass = document.getElementById("profileCurrentPass")?.value;
+  const otp = document.getElementById("profileEmailOtp")?.value.trim();
+  if (!otp || otp.length !== 6) return setProfileMsg("Enter 6-digit verification code.", true);
+  if (!pass) return setProfileMsg("Enter current password.", true);
+  try {
+    await window.mosAuth.confirmEmailChangeOtp(email, otp, pass);
+    loggedInUser.email = email;
+    document.getElementById("profileEmailOtp").value = "";
+    showOtpBox("emailOtpBox", false);
+    refreshStatusBar();
+    setProfileMsg("Email verified and updated.");
+  } catch (err) {
+    setProfileMsg(window.mosAuth.mapError(err), true);
+  }
+}
+
+async function sendMobileChangeOtp() {
+  const pass = document.getElementById("profileCurrentPass")?.value;
+  const e164 = getE164Phone();
+  if (!e164 || e164.length < 10) return setProfileMsg("Enter valid mobile with country code.", true);
+  if (!pass) return setProfileMsg("Enter current password first.", true);
+  try {
+    await window.mosAuth.reauthWithPassword(pass);
+    try {
+      await window.mosAuth.sendPhoneOtp(e164);
+      showOtpBox("mobileOtpBox", true);
+      document.getElementById("profileMobileOtp")?.focus();
+      setProfileMsg(`OTP sent by SMS to ${e164}.`);
+      return;
+    } catch (phoneErr) {
+      if (
+        phoneErr?.code !== "auth/operation-not-allowed" &&
+        phoneErr?.code !== "auth/invalid-app-credential"
+      ) {
+        throw phoneErr;
+      }
+    }
+    const fallback = await window.mosAuth.requestPhoneChangeOtp(e164, pass);
+    showOtpBox("mobileOtpBox", true);
+    document.getElementById("profileMobileOtp")?.focus();
+    setProfileMsg(
+      `Phone Auth not enabled in Firebase. Demo OTP: ${fallback.otp} (enable Phone provider for real SMS).`
+    );
+  } catch (err) {
+    setProfileMsg(window.mosAuth.mapError(err), true);
+  }
+}
+
+async function confirmMobileChange() {
+  const pass = document.getElementById("profileCurrentPass")?.value;
+  const otp = document.getElementById("profileMobileOtp")?.value.trim();
   const country = document.getElementById("profileCountry")?.value || "+91";
+  const number = document.getElementById("profileMobile")?.value.trim().replace(/\D/g, "");
+  const e164 = getE164Phone();
+  if (!otp || otp.length !== 6) return setProfileMsg("Enter 6-digit OTP.", true);
+  if (!pass) return setProfileMsg("Enter current password.", true);
   const uid = getProfileUid();
-  if (!number) return setProfileMsg("Enter mobile number.", true);
-  localStorage.setItem(`${PROFILE_MOBILE_KEY}_${uid}`, JSON.stringify({ country, number }));
-  localStorage.setItem(`${PROFILE_COUNTRY_KEY}_${uid}`, country);
-  setProfileMsg(`Mobile saved: ${country} ${number}`);
+  try {
+    await window.mosAuth.reauthWithPassword(pass);
+    await window.mosAuth.confirmPhoneOtp(otp, e164);
+    localStorage.setItem(
+      `${PROFILE_MOBILE_KEY}_${uid}`,
+      JSON.stringify({ country, number, e164, verified: true })
+    );
+    localStorage.setItem(`${PROFILE_COUNTRY_KEY}_${uid}`, country);
+    document.getElementById("profileMobileOtp").value = "";
+    showOtpBox("mobileOtpBox", false);
+    setProfileMsg(`Mobile verified: ${country} ${number}`);
+  } catch (err) {
+    setProfileMsg(window.mosAuth.mapError(err), true);
+  }
 }
 
 async function saveProfilePassword() {
@@ -1139,8 +1220,10 @@ Object.assign(window, {
   removeFriend,
   refreshWifiList,
   saveProfileName,
-  saveProfileEmail,
-  saveProfileMobile,
+  sendEmailChangeOtp,
+  confirmEmailChange,
+  sendMobileChangeOtp,
+  confirmMobileChange,
   saveProfilePassword,
   showAuthTab,
   login,

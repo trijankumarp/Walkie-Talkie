@@ -523,6 +523,23 @@
       color: var(--text);
     }
     .bio-row input { width: 18px; height: 18px; accent-color: var(--text); }
+    .otp-box {
+      display: none;
+      margin: 8px 0 12px;
+      padding: 12px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .otp-box.open { display: block; }
+    .otp-box input {
+      letter-spacing: 0.35em;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    .otp-hint { font-size: 11px; color: var(--text-faint); margin: 6px 0 0; line-height: 1.4; }
+    #recaptcha-container { min-height: 1px; }
     .menu-close {
       width: 36px;
       height: 36px;
@@ -916,16 +933,29 @@
         <input type="text" id="profileName" placeholder="Your name" autocomplete="name">
         <button type="button" class="btn btn-sm" onclick="saveProfileName()">Save name</button>
 
-        <label class="field-label profile-field" for="profileEmail">Email</label>
-        <input type="email" id="profileEmail" placeholder="Email" autocomplete="email">
-        <button type="button" class="btn btn-sm" onclick="saveProfileEmail()">Save email</button>
+        <label class="field-label profile-field" for="profileEmail">New email</label>
+        <input type="email" id="profileEmail" placeholder="New email address" autocomplete="email">
+        <button type="button" class="btn btn-sm" onclick="sendEmailChangeOtp()">Send verification code</button>
+        <div id="emailOtpBox" class="otp-box">
+          <label class="field-label" for="profileEmailOtp">Email verification code</label>
+          <input type="text" id="profileEmailOtp" inputmode="numeric" maxlength="6" placeholder="6-digit OTP">
+          <button type="button" class="btn btn-sm" onclick="confirmEmailChange()">Verify & save email</button>
+          <p class="otp-hint">Enter password above, then code sent to your new email.</p>
+        </div>
 
-        <label class="field-label profile-field">Mobile number</label>
+        <label class="field-label profile-field">New mobile number</label>
         <div class="phone-row">
           <select id="profileCountry" aria-label="Country code"></select>
           <input type="tel" id="profileMobile" placeholder="Phone number" autocomplete="tel">
         </div>
-        <button type="button" class="btn btn-sm" onclick="saveProfileMobile()">Save mobile</button>
+        <div id="recaptcha-container"></div>
+        <button type="button" class="btn btn-sm" onclick="sendMobileChangeOtp()">Send OTP to new number</button>
+        <div id="mobileOtpBox" class="otp-box">
+          <label class="field-label" for="profileMobileOtp">Mobile verification code</label>
+          <input type="text" id="profileMobileOtp" inputmode="numeric" maxlength="6" placeholder="6-digit OTP">
+          <button type="button" class="btn btn-sm" onclick="confirmMobileChange()">Verify & save mobile</button>
+          <p class="otp-hint">SMS OTP (Firebase Phone Auth). Password required before send.</p>
+        </div>
 
         <div class="bio-row">
           <span>Biometric login</span>
@@ -933,8 +963,8 @@
         </div>
         <button type="button" class="btn btn-sm" onclick="setupBiometric()">Set up fingerprint / Face ID</button>
 
-        <label class="field-label profile-field" for="profileCurrentPass">Current password</label>
-        <input type="password" id="profileCurrentPass" placeholder="For email / password change" autocomplete="current-password">
+        <label class="field-label profile-field" for="profileCurrentPass">Current password (required for OTP)</label>
+        <input type="password" id="profileCurrentPass" placeholder="Your login password" autocomplete="current-password">
         <label class="field-label profile-field" for="profileNewPass">New password</label>
         <input type="password" id="profileNewPass" placeholder="Min 6 characters" autocomplete="new-password">
         <button type="button" class="btn btn-sm" onclick="saveProfilePassword()">Change password</button>
