@@ -1357,18 +1357,25 @@ function setBtStatus(connected, name) {
   updateBtChip(connected, name);
 }
 
+function formatWifiDisplayName(name) {
+  if (!name) return "";
+  if (name === "channel-wifi") return "Same WiFi as channel";
+  return name;
+}
+
 function setWifiStatus(connected, name) {
   const el = document.getElementById("wifiStatus");
+  const label = formatWifiDisplayName(name);
   if (el) {
-    if (connected && name) {
-      el.textContent = `Selected — ${name}`;
+    if (connected && label) {
+      el.textContent = `Selected — ${label}`;
       el.className = "conn-line connected";
     } else {
-      el.textContent = "Not selected — tap a network below";
+      el.textContent = "Not selected — tap Same WiFi as channel below";
       el.className = "conn-line disconnected";
     }
   }
-  updateWifiChip(connected, name);
+  updateWifiChip(connected, label || name);
 }
 
 function refreshStatusBar() {
@@ -2220,19 +2227,6 @@ function bindWifiListClicks(list) {
   list.querySelectorAll("[data-wifi]").forEach((el) => {
     el.addEventListener("click", () => selectWifiNetwork(el.getAttribute("data-wifi")));
   });
-  list.querySelector("#wifiManualApply")?.addEventListener("click", applyManualWifiName);
-  list.querySelector("#wifiManualName")?.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") applyManualWifiName();
-  });
-}
-
-function applyManualWifiName() {
-  const raw = document.getElementById("wifiManualName")?.value?.trim();
-  if (!raw) {
-    alert("Type your WiFi name (same on all devices), or tap “Same WiFi as channel” above.");
-    return;
-  }
-  selectWifiNetwork(raw);
 }
 
 function renderWifiPickList({ networks = [], connectedSsid = "", topHint = "", bottomHint = "" } = {}) {
@@ -2257,12 +2251,6 @@ function renderWifiPickList({ networks = [], connectedSsid = "", topHint = "", b
     const active = selectedWifiName === n ? " active" : "";
     html += `<div class="pick-item${active}" data-wifi="${escapeHtml(n)}">${escapeHtml(n)}</div>`;
   });
-
-  html += `
-    <div class="wifi-manual-row">
-      <input type="text" id="wifiManualName" class="wifi-manual-input" placeholder="WiFi name (optional, same on all devices)" autocomplete="off">
-      <button type="button" class="btn btn-sm" id="wifiManualApply">Use name</button>
-    </div>`;
 
   if (bottomHint) {
     html += `<div class="pick-item warn">${escapeHtml(bottomHint)}</div>`;
