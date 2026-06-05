@@ -1,4 +1,4 @@
-# M-OS Walkie Talkie
+# M-OS Walkie-Talkie
 
 Offline-friendly team walkie PWA with **real Firebase login** (email + Google).
 
@@ -27,7 +27,7 @@ Offline-friendly team walkie PWA with **real Firebase login** (email + Google).
 ## 2. GitHub
 
 ```powershell
-cd "C:\Users\trija\Desktop\Work\VS\Walkie Talkie"
+cd "C:\Users\trija\Desktop\Work\VS\Walkie-Talkie"
 gh auth login
 gh repo create Walkie-Talkie --public --source=. --remote=origin --push
 ```
