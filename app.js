@@ -286,7 +286,6 @@ function renderSettingsList() {
   setVal("settingsLanguageValue", extra.language || "English");
   setVal("settingsHomeValue", extra.homeAddress || "Not set");
   setVal("settingsWorkValue", extra.workAddress || "Not set");
-  setVal("settingsOtherValue", extra.otherAddresses || "Not set");
 
   const pwdChanged = localStorage.getItem(`${PASSWORD_CHANGED_KEY}_${uid}`);
   setVal("settingsPasswordValue", formatPasswordChanged(pwdChanged));
@@ -300,10 +299,49 @@ function renderSettingsList() {
   updateMenuAvatar();
 }
 
-function closeSettingsEditor() {
+function stripSpacesFromFirstName(value) {
+  return (value || "").replace(/\s+/g, "");
+}
+
+function bindNoSpaceFirstName(...ids) {
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el || el.dataset.noSpaceBound) return;
+    el.dataset.noSpaceBound = "1";
+    el.addEventListener("input", () => {
+      const cleaned = stripSpacesFromFirstName(el.value);
+      if (el.value !== cleaned) el.value = cleaned;
+    });
+  });
+}
+
+function validateFirstName(firstName) {
+  if (!firstName) return "Please enter first name.";
+  if (/\s/.test(firstName)) return "First name cannot contain spaces.";
+  return null;
+}
+
+function getSettingsExpandEl(key) {
+  let expand = document.getElementById(`settingsExpand-${key}`);
+  if (expand) return expand;
+  const row = document.querySelector(`.settings-row[data-settings-key="${key}"]`);
+  if (!row) return null;
+  expand = document.createElement("div");
+  expand.className = "settings-row-expand";
+  expand.id = `settingsExpand-${key}`;
+  expand.setAttribute("aria-hidden", "true");
+  row.insertAdjacentElement("afterend", expand);
+  return expand;
+}
+
+function closeAllSettingsExpands() {
   settingsEditorKey = null;
-  document.getElementById("settingsEditor")?.classList.remove("open");
-  document.getElementById("settingsList")?.classList.remove("hidden");
+  document.querySelectorAll(".settings-row-expand.open").forEach((el) => {
+    el.classList.remove("open");
+    el.innerHTML = "";
+    el.setAttribute("aria-hidden", "true");
+  });
+  document.querySelectorAll(".settings-row.expanded").forEach((r) => r.classList.remove("expanded"));
   const grid = document.getElementById("emojiGrid");
   const panel = document.getElementById("settingsPanel");
   if (grid && panel && !panel.contains(grid)) {
@@ -312,32 +350,26 @@ function closeSettingsEditor() {
   }
 }
 
-function openSettingsEditor(key) {
+function closeSettingsEditor() {
+  closeAllSettingsExpands();
+}
+
+function toggleSettingsEditor(key) {
+  const expand = getSettingsExpandEl(key);
+  if (!expand) return;
+  const row = document.querySelector(`.settings-row[data-settings-key="${key}"]`);
+  const wasOpen = expand.classList.contains("open");
+  closeAllSettingsExpands();
+  if (wasOpen) return;
+
   settingsEditorKey = key;
-  const titles = {
-    photo: "Profile picture",
-    name: "Name",
-    gender: "Gender",
-    email: "Email",
-    phone: "Phone",
-    birthday: "Birthday",
-    language: "Language",
-    home: "Home address",
-    work: "Work address",
-    other: "Other addresses",
-    password: "Password",
-    permissions: "App permissions",
-    biometric: "Biometric login"
-  };
-  const titleEl = document.getElementById("settingsEditorTitle");
-  const bodyEl = document.getElementById("settingsEditorBody");
-  if (!bodyEl) return;
-  if (titleEl) titleEl.textContent = titles[key] || "Edit";
-  bodyEl.innerHTML = buildSettingsEditorHtml(key);
-  document.getElementById("settingsList")?.classList.add("hidden");
-  document.getElementById("settingsEditor")?.classList.add("open");
+  expand.innerHTML = buildSettingsEditorHtml(key);
+  expand.classList.add("open");
+  expand.setAttribute("aria-hidden", "false");
+  row?.classList.add("expanded");
 
   fillProfileForm();
+  bindNoSpaceFirstName("profileFirstName");
   if (key === "permissions") renderAppPermissions();
   if (key === "photo") {
     const grid = document.getElementById("emojiGrid");
@@ -347,6 +379,9 @@ function openSettingsEditor(key) {
       grid.style.display = "none";
     }
   }
+  requestAnimationFrame(() => {
+    expand.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  });
 }
 
 function buildSettingsEditorHtml(key) {
@@ -383,7 +418,7 @@ function buildSettingsEditorHtml(key) {
       <div id="emojiGridMount"></div>`,
     name: `
       <label class="profile-label">First name</label>
-      <input type="text" id="profileFirstName" class="profile-input" placeholder="First name" autocomplete="given-name">
+      <input type="text" id="profileFirstName" class="profile-input" placeholder="First name (no spaces)" autocomplete="given-name">
       <label class="profile-label">Last name</label>
       <input type="text" id="profileLastName" class="profile-input" placeholder="Last name" autocomplete="family-name">
       <button type="button" class="btn btn-sm" onclick="saveProfileName()">Save name</button>`,
@@ -435,10 +470,6 @@ function buildSettingsEditorHtml(key) {
       <label class="profile-label">Work address</label>
       <textarea id="profileWork" class="profile-input" rows="3" placeholder="Office address">${escapeHtml(extra.workAddress || "")}</textarea>
       <button type="button" class="btn btn-sm" onclick="saveProfileAddress('work')">Save</button>`,
-    other: `
-      <label class="profile-label">Other addresses</label>
-      <textarea id="profileOther" class="profile-input" rows="3" placeholder="Additional addresses">${escapeHtml(extra.otherAddresses || "")}</textarea>
-      <button type="button" class="btn btn-sm" onclick="saveProfileAddress('other')">Save</button>`,
     password: `
       <p class="profile-hint">${escapeHtml(formatPasswordChanged(localStorage.getItem(`${PASSWORD_CHANGED_KEY}_${uid}`)))}</p>
       <label class="profile-label">Current password</label>
@@ -498,8 +529,7 @@ function saveProfileLanguage() {
 function saveProfileAddress(which) {
   const map = {
     home: { id: "profileHome", key: "homeAddress" },
-    work: { id: "profileWork", key: "workAddress" },
-    other: { id: "profileOther", key: "otherAddresses" }
+    work: { id: "profileWork", key: "workAddress" }
   };
   const cfg = map[which];
   if (!cfg) return;
@@ -629,6 +659,22 @@ function fillCountrySelect(selectId) {
 function initCountrySelect() {
   fillCountrySelect("profileCountry");
   fillCountrySelect("signupCountry");
+}
+
+function initSignupFields() {
+  const genderSel = document.getElementById("signupGender");
+  if (genderSel && !genderSel.options.length) {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Select gender";
+    genderSel.appendChild(placeholder);
+    GENDER_OPTIONS.filter((g) => g.value).forEach((g) => {
+      const opt = document.createElement("option");
+      opt.value = g.value;
+      opt.textContent = g.label;
+      genderSel.appendChild(opt);
+    });
+  }
 }
 
 function saveUserNames(uid, firstName, lastName) {
@@ -1150,15 +1196,21 @@ function getSignupE164() {
 
 async function signup() {
   if (!requireFirebase()) return;
-  const firstName = document.getElementById("signupFirstName")?.value.trim();
+  const firstName = stripSpacesFromFirstName(
+    document.getElementById("signupFirstName")?.value.trim()
+  );
   const lastName = document.getElementById("signupLastName")?.value.trim();
   const email = document.getElementById("signupEmail").value.trim().toLowerCase();
   const country = document.getElementById("signupCountry")?.value || "+91";
   const mobile = document.getElementById("signupMobile")?.value.trim().replace(/\D/g, "");
+  const gender = document.getElementById("signupGender")?.value || "";
+  const birthday = document.getElementById("signupBirthday")?.value || "";
+  const address = document.getElementById("signupAddress")?.value.trim() || "";
   const password = document.getElementById("signupPassword").value;
   const confirm = document.getElementById("signupConfirm").value;
 
-  if (!firstName) return setAuthError("Please enter first name.", ["signupFirstName"]);
+  const firstErr = validateFirstName(firstName);
+  if (firstErr) return setAuthError(firstErr, ["signupFirstName"]);
   if (!lastName) return setAuthError("Please enter last name.", ["signupLastName"]);
   if (!email) return setAuthError("Please enter Gmail or email address.", ["signupEmail"]);
   if (!isValidEmail(email))
@@ -1166,6 +1218,9 @@ async function signup() {
   if (!mobile || mobile.length < 8) {
     return setAuthError("Please enter a valid mobile number.", ["signupMobile"]);
   }
+  if (!gender) return setAuthError("Please select gender.", ["signupGender"]);
+  if (!birthday) return setAuthError("Please enter birthday.", ["signupBirthday"]);
+  if (!address) return setAuthError("Please enter your address.", ["signupAddress"]);
   if (password.length < 6) return setAuthError("Password must be at least 6 characters.", ["signupPassword"]);
   if (password !== confirm)
     return setAuthError("Passwords do not match.", ["signupPassword", "signupConfirm"]);
@@ -1176,6 +1231,7 @@ async function signup() {
     const user = await window.mosAuth.signupEmail(firstName, lastName, email, password);
     saveUserNames(user.uid, firstName, lastName);
     saveMobileProfile(user.uid, country, mobile, false);
+    saveProfileExtra(user.uid, { gender, birthday, homeAddress: address });
     alert("Account created! Check your email to verify (✓ will show in Settings).");
     showAuthTab("login");
     document.getElementById("loginEmail").value = email;
@@ -1550,9 +1606,12 @@ async function refreshWifiList() {
 }
 
 async function saveProfileName() {
-  const firstName = document.getElementById("profileFirstName")?.value.trim();
+  const firstName = stripSpacesFromFirstName(
+    document.getElementById("profileFirstName")?.value.trim()
+  );
   const lastName = document.getElementById("profileLastName")?.value.trim();
-  if (!firstName) return setProfileMsg("Enter first name.", true);
+  const firstErr = validateFirstName(firstName);
+  if (firstErr) return setProfileMsg(firstErr, true);
   if (!lastName) return setProfileMsg("Enter last name.", true);
   const fullName = `${firstName} ${lastName}`.trim();
   try {
@@ -1756,6 +1815,8 @@ async function logout() {
 function boot() {
   initTheme();
   initCountrySelect();
+  initSignupFields();
+  bindNoSpaceFirstName("signupFirstName");
   initAvatarPickers();
   loadChannels();
   loadFriends();
@@ -1794,7 +1855,7 @@ Object.assign(window, {
   toggleTeamPanel,
   toggleFriendPanel,
   toggleSettingsPanel,
-  openSettingsEditor,
+  toggleSettingsEditor,
   closeSettingsEditor,
   pickAvatarGallery,
   pickAvatarCamera,

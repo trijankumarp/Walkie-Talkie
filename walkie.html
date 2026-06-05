@@ -691,6 +691,17 @@
       border-radius: 12px;
     }
     .settings-editor.open { display: block; }
+    .settings-row-expand {
+      display: none;
+      padding: 4px 4px 16px 42px;
+      border-bottom: 1px solid var(--border);
+      background: var(--accent-soft);
+    }
+    .settings-row-expand.open { display: block; }
+    .settings-row.expanded {
+      background: var(--accent-soft);
+      border-bottom-color: transparent;
+    }
     .settings-editor-title {
       font-size: 14px;
       font-weight: 600;
@@ -1049,7 +1060,7 @@
         <span class="account-badge">Individual account</span>
         <label class="field-label">Name</label>
         <div class="name-row">
-          <input type="text" id="signupFirstName" placeholder="First name" autocomplete="given-name">
+          <input type="text" id="signupFirstName" placeholder="First name (no spaces)" autocomplete="given-name">
           <input type="text" id="signupLastName" placeholder="Last name" autocomplete="family-name">
         </div>
         <label class="field-label" for="signupEmail">Gmail / Email Address</label>
@@ -1059,6 +1070,12 @@
           <select id="signupCountry" aria-label="Country code"></select>
           <input type="tel" id="signupMobile" placeholder="Phone number" autocomplete="tel">
         </div>
+        <label class="field-label" for="signupGender">Gender</label>
+        <select id="signupGender" aria-label="Gender"></select>
+        <label class="field-label" for="signupBirthday">Birthday</label>
+        <input type="date" id="signupBirthday" aria-label="Birthday">
+        <label class="field-label" for="signupAddress">Address</label>
+        <textarea id="signupAddress" rows="2" placeholder="Home address (street, city)" style="width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border);border-radius:10px;background:var(--bg-card);color:var(--text);font-family:inherit;font-size:15px;resize:vertical;"></textarea>
         <label class="field-label" for="signupPassword">Password</label>
         <input type="password" id="signupPassword" placeholder="Min 6 characters" autocomplete="new-password">
         <label class="field-label" for="signupConfirm">Confirm Password</label>
@@ -1138,89 +1155,82 @@
       </button>
       <div id="settingsPanel" class="menu-panel">
         <div class="settings-list">
-          <button type="button" class="settings-row settings-row-photo" onclick="openSettingsEditor('photo')">
+          <button type="button" class="settings-row settings-row-photo" data-settings-key="photo" onclick="toggleSettingsEditor('photo')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
             <span class="settings-row-body"><span class="settings-row-label">Profile picture</span></span>
             <span class="settings-row-avatar" id="settingsListAvatar">?</span>
           </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('name')">
+          <button type="button" class="settings-row" data-settings-key="name" onclick="toggleSettingsEditor('name')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></span>
             <span class="settings-row-body">
               <span class="settings-row-label">Name</span>
               <span class="settings-row-value" id="settingsNameValue">Not set</span>
             </span>
           </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('gender')">
+          <button type="button" class="settings-row" data-settings-key="gender" onclick="toggleSettingsEditor('gender')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
             <span class="settings-row-body">
               <span class="settings-row-label">Gender</span>
               <span class="settings-row-value" id="settingsGenderValue">Not set</span>
             </span>
           </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('email')">
+          <button type="button" class="settings-row" data-settings-key="email" onclick="toggleSettingsEditor('email')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="m22 6-10 7L2 6"/></svg></span>
             <span class="settings-row-body">
               <span class="settings-row-label">Email</span>
               <span class="settings-row-value" id="settingsEmailValue">—</span>
             </span>
           </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('phone')">
+          <button type="button" class="settings-row" data-settings-key="phone" onclick="toggleSettingsEditor('phone')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></span>
             <span class="settings-row-body">
               <span class="settings-row-label">Phone</span>
               <span class="settings-row-value" id="settingsPhoneValue">Not set</span>
             </span>
           </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('birthday')">
+          <button type="button" class="settings-row" data-settings-key="birthday" onclick="toggleSettingsEditor('birthday')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"/><path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"/><path d="M2 21h20"/><path d="M7 8v3M12 7v4M17 8v3"/></svg></span>
             <span class="settings-row-body">
               <span class="settings-row-label">Birthday</span>
               <span class="settings-row-value" id="settingsBirthdayValue">Not set</span>
             </span>
           </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('language')">
+          <button type="button" class="settings-row" data-settings-key="language" onclick="toggleSettingsEditor('language')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
             <span class="settings-row-body">
               <span class="settings-row-label">Language</span>
               <span class="settings-row-value" id="settingsLanguageValue">English</span>
             </span>
           </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('home')">
+          <button type="button" class="settings-row" data-settings-key="home" onclick="toggleSettingsEditor('home')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>
             <span class="settings-row-body">
               <span class="settings-row-label">Home address</span>
               <span class="settings-row-value" id="settingsHomeValue">Not set</span>
             </span>
           </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('work')">
+          <button type="button" class="settings-row" data-settings-key="work" onclick="toggleSettingsEditor('work')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span>
             <span class="settings-row-body">
               <span class="settings-row-label">Work address</span>
               <span class="settings-row-value" id="settingsWorkValue">Not set</span>
             </span>
           </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('other')">
-            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
-            <span class="settings-row-body">
-              <span class="settings-row-label">Other addresses</span>
-              <span class="settings-row-value" id="settingsOtherValue">Not set</span>
-            </span>
-          </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('password')">
+          <button type="button" class="settings-row" data-settings-key="password" onclick="toggleSettingsEditor('password')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span>
             <span class="settings-row-body">
               <span class="settings-row-label">Password</span>
               <span class="settings-row-value" id="settingsPasswordValue">Change password</span>
             </span>
           </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('permissions')">
+          <button type="button" class="settings-row" data-settings-key="permissions" onclick="toggleSettingsEditor('permissions')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
             <span class="settings-row-body">
               <span class="settings-row-label">App permissions</span>
               <span class="settings-row-value" id="settingsPermValue">Tap to manage</span>
             </span>
           </button>
-          <button type="button" class="settings-row" onclick="openSettingsEditor('biometric')">
+          <button type="button" class="settings-row" data-settings-key="biometric" onclick="toggleSettingsEditor('biometric')">
             <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M12 11c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2z"/><path d="M12 2a10 10 0 0 1 10 10"/></svg></span>
             <span class="settings-row-body">
               <span class="settings-row-label">Biometric login</span>
@@ -1229,11 +1239,6 @@
           </button>
         </div>
 
-        <div id="settingsEditor" class="settings-editor">
-          <button type="button" class="settings-editor-back" onclick="closeSettingsEditor()">← Back to list</button>
-          <p class="settings-editor-title" id="settingsEditorTitle">Edit</p>
-          <div id="settingsEditorBody"></div>
-        </div>
         <p id="profileMsg" class="profile-msg"></p>
 
         <input type="file" id="avatarGalleryInput" accept="image/*" hidden>
