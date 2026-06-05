@@ -12,7 +12,15 @@ function isValidEmail(email) {
 }
 
 function setAuthError(msg) {
-  document.getElementById("authError").textContent = msg || "";
+  const el = document.getElementById("authError");
+  if (!el) return;
+  if (msg && msg.includes("Authentication is not enabled")) {
+    el.innerHTML =
+      msg +
+      '<br><a href="https://console.firebase.google.com/project/walkietalkie-mos/authentication" target="_blank" rel="noopener" style="color:#00cc66;margin-top:8px;display:inline-block;">Open Firebase Authentication →</a>';
+  } else {
+    el.textContent = msg || "";
+  }
 }
 
 function setAuthLoading(loading) {

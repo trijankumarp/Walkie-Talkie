@@ -22,7 +22,9 @@ const ERROR_MAP = {
   "auth/popup-closed-by-user": "Google sign-in was cancelled.",
   "auth/popup-blocked": "Popup blocked. Allow popups for this site.",
   "auth/operation-not-allowed": "This sign-in method is disabled in Firebase Console.",
-  "auth/network-request-failed": "Network error. Check your connection."
+  "auth/network-request-failed": "Network error. Check your connection.",
+  "auth/configuration-not-found":
+    "Firebase Authentication is not enabled. Open Firebase Console → walkietalkie-mos → Build → Authentication → Get started, then enable Email/Password and Google."
 };
 
 let auth = null;
