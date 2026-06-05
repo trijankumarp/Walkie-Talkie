@@ -1399,7 +1399,49 @@
       </div>
     </div>
 
-    <!-- 2. Friends -->
+    <!-- 2. Bluetooth (first) -->
+    <div class="menu-block">
+      <button type="button" class="menu-theme-row" id="btnBluetoothMenu" onclick="toggleBluetoothMenu()">
+        <span class="menu-row-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6.5 6.5a8 8 0 0 1 11 11M9 9a4 4 0 0 1 6 6M12 12h.01"/></svg>
+        </span>
+        Bluetooth
+      </button>
+      <div id="btPanel" class="menu-panel">
+        <div class="help-box" style="margin-bottom:8px;">
+          <strong>Step 1 — Bluetooth</strong> — pair headset/speaker in phone Settings, then tap <strong>Bluetooth mic / headset</strong> below. Then pick a Channel and Hold to talk.
+        </div>
+        <div id="btStatus" class="conn-line disconnected">Not connected</div>
+        <div class="pick-list" id="btList"></div>
+      </div>
+    </div>
+
+    <!-- 3. Channel -->
+    <div class="menu-block">
+      <button type="button" class="menu-theme-row" id="btnChannelAction" onclick="toggleChannelPanel()">
+        <span class="menu-row-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9M19.1 4.9C23 8.8 23 15.1 19.1 19.1M8 12a4 4 0 0 1 8 0M12 2v2M12 20v2"/></svg>
+        </span>
+        Channel
+      </button>
+      <div id="channelPanel" class="menu-panel">
+        <div class="add-channel channel-create">
+          <div class="channel-create-row">
+            <input type="text" id="newChannelName" placeholder="Channel name" onkeydown="if(event.key==='Enter')addNewChannel()">
+            <button type="button" class="add-symbol" onclick="addNewChannel()" aria-label="Add channel">+</button>
+          </div>
+          <input type="text" id="newChannelFreq" class="channel-freq-input" placeholder="Frequency MHz (optional, e.g. 462.5625)" inputmode="decimal">
+        </div>
+        <p class="profile-hint" style="margin:0 0 8px;text-align:left;">Channels save to Firebase cloud. Same WiFi + search finds others. Each channel has a unique ID + frequency.</p>
+        <div class="channel-search-wrap">
+          <svg class="channel-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="search" id="channelSearch" class="channel-search" placeholder="Search nearby & your channels" oninput="filterChannels()" autocomplete="off">
+        </div>
+        <div class="channel-list menu-channel-list" id="channelList"></div>
+      </div>
+    </div>
+
+    <!-- 4. Friends -->
     <div class="menu-block">
       <button type="button" class="menu-theme-row" id="btnFriendAction" onclick="toggleFriendPanel()">
         <span class="menu-row-icon">
@@ -1417,24 +1459,7 @@
       </div>
     </div>
 
-    <!-- 3. Bluetooth -->
-    <div class="menu-block">
-      <button type="button" class="menu-theme-row" id="btnBluetoothMenu" onclick="toggleBluetoothMenu()">
-        <span class="menu-row-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6.5 6.5a8 8 0 0 1 11 11M9 9a4 4 0 0 1 6 6M12 12h.01"/></svg>
-        </span>
-        Bluetooth
-      </button>
-      <div id="btPanel" class="menu-panel">
-        <div class="help-box" style="margin-bottom:8px;">
-          <strong>Bluetooth</strong> — tap a device below. Turn on BT on your device. Use Chrome, Edge, or Windows app.
-        </div>
-        <div id="btStatus" class="conn-line disconnected">Not connected</div>
-        <div class="pick-list" id="btList"></div>
-      </div>
-    </div>
-
-    <!-- 4. WiFi -->
+    <!-- 5. WiFi -->
     <div class="menu-block">
       <button type="button" class="menu-theme-row" id="btnWifiMenu" onclick="toggleWifiMenu()">
         <span class="menu-row-icon">
@@ -1449,31 +1474,6 @@
         <div id="wifiStatus" class="conn-line disconnected">Not connected</div>
         <div class="pick-list" id="wifiList"></div>
         <button type="button" class="btn btn-sm" onclick="refreshWifiList()">Refresh WiFi list</button>
-      </div>
-    </div>
-
-    <!-- 5. Channel -->
-    <div class="menu-block">
-      <button type="button" class="menu-theme-row" id="btnChannelAction" onclick="toggleChannelPanel()">
-        <span class="menu-row-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9M19.1 4.9C23 8.8 23 15.1 19.1 19.1M8 12a4 4 0 0 1 8 0M12 2v2M12 20v2"/></svg>
-        </span>
-        Channel
-      </button>
-      <div id="channelPanel" class="menu-panel">
-        <div class="add-channel channel-create">
-          <div class="channel-create-row">
-            <input type="text" id="newChannelName" placeholder="Channel name" onkeydown="if(event.key==='Enter')addNewChannel()">
-            <button type="button" class="add-symbol" onclick="addNewChannel()" aria-label="Add channel">+</button>
-          </div>
-          <input type="text" id="newChannelFreq" class="channel-freq-input" placeholder="Frequency MHz (optional, e.g. 462.5625)" inputmode="decimal">
-        </div>
-        <p class="profile-hint" style="margin:0 0 8px;text-align:left;">Channels save to Firebase cloud (not on this phone). Same WiFi + search finds others. Each channel has a unique ID + frequency.</p>
-        <div class="channel-search-wrap">
-          <svg class="channel-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="search" id="channelSearch" class="channel-search" placeholder="Search nearby & your channels" oninput="filterChannels()" autocomplete="off">
-        </div>
-        <div class="channel-list menu-channel-list" id="channelList"></div>
       </div>
     </div>
 

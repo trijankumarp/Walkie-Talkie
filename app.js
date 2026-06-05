@@ -26,6 +26,7 @@ const PROFILE_EXTRA_KEY = "walkie_profile_extra_v1";
 const PASSWORD_CHANGED_KEY = "walkie_password_changed_v1";
 const BIOMETRIC_KEY = "walkie_biometric_v1";
 const FRIENDS_KEY = "walkie_friends_v1";
+const BT_INTRO_KEY = "walkie_bt_intro_v1";
 
 const GENDER_OPTIONS = [
   { value: "", label: "Not set" },
@@ -77,6 +78,10 @@ let isTalking = false;
 let currentChannel = null;
 let channels = [];
 let bleDevice = null;
+let btAudioReady = false;
+let btAudioDeviceLabel = null;
+let pttMediaStream = null;
+let pttAudioContext = null;
 let loggedInUser = null;
 let btPanelOpen = false;
 let wifiPanelOpen = false;
@@ -294,7 +299,7 @@ function updatePttHint() {
   const label = getActiveChannelTalkLabel();
   hint.textContent = label
     ? `Hold to talk on ${label}`
-    : "Open menu (top left) to select or create a channel";
+    : "Menu → Bluetooth first, then Channel, then Hold to talk";
 }
 
 function openMenu() {
@@ -1244,10 +1249,85 @@ function updateBtChip(connected, name) {
     const short = name.length > 14 ? name.slice(0, 12) + "…" : name;
     chip.textContent = `Bluetooth: ${short}`;
     chip.classList.add("on");
+  } else if (btAudioReady && btAudioDeviceLabel) {
+    const short =
+      btAudioDeviceLabel.length > 14 ? btAudioDeviceLabel.slice(0, 12) + "…" : btAudioDeviceLabel;
+    chip.textContent = `Bluetooth: ${short}`;
+    chip.classList.add("on");
   } else {
     chip.textContent = "Bluetooth: Off";
     chip.classList.remove("on");
   }
+}
+
+function isBluetoothReady() {
+  return !!(bleDevice?.gatt?.connected || btAudioReady);
+}
+
+async function pickBluetoothAudioInputId() {
+  if (!navigator.mediaDevices?.enumerateDevices) return null;
+  try {
+    const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+    probe.getTracks().forEach((t) => t.stop());
+  } catch {
+    return null;
+  }
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const bt = devices.find(
+    (d) =>
+      d.kind === "audioinput" &&
+      /bluetooth|bt|headset|earbud|airpod|tws|buds|speaker|hands/i.test(d.label)
+  );
+  return bt?.deviceId || null;
+}
+
+function releasePttAudio() {
+  if (pttMediaStream) {
+    pttMediaStream.getTracks().forEach((t) => t.stop());
+    pttMediaStream = null;
+  }
+  if (pttAudioContext) {
+    pttAudioContext.close().catch(() => {});
+    pttAudioContext = null;
+  }
+  btAudioReady = false;
+  btAudioDeviceLabel = null;
+}
+
+async function connectBluetoothAudio() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert("Microphone not supported in this browser.");
+    return false;
+  }
+  try {
+    releasePttAudio();
+    const deviceId = await pickBluetoothAudioInputId();
+    const constraints = deviceId
+      ? { audio: { deviceId: { ideal: deviceId }, echoCancellation: true, noiseSuppression: true } }
+      : { audio: { echoCancellation: true, noiseSuppression: true } };
+    pttMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const track = pttMediaStream.getAudioTracks()[0];
+    btAudioDeviceLabel = track?.label || "Microphone";
+    btAudioReady = true;
+    pttAudioContext = new AudioContext();
+    const source = pttAudioContext.createMediaStreamSource(pttMediaStream);
+    const analyser = pttAudioContext.createAnalyser();
+    source.connect(analyser);
+    setBtStatus(true, btAudioDeviceLabel);
+    updateBtChip(true, btAudioDeviceLabel);
+    renderBluetoothList();
+    return true;
+  } catch {
+    alert("Allow microphone. Pair Bluetooth headset in phone Settings first, then try again.");
+    return false;
+  }
+}
+
+function maybeOpenBluetoothFirst() {
+  if (sessionStorage.getItem(BT_INTRO_KEY)) return;
+  sessionStorage.setItem(BT_INTRO_KEY, "1");
+  openMenu();
+  toggleBluetoothMenu(true);
 }
 
 function updateWifiChip(connected, name) {
@@ -1433,6 +1513,7 @@ async function enterApp(user) {
   if (selectedWifiName) setWifiStatus(true, selectedWifiName);
   renderBluetoothList();
   startChannelWifiSync();
+  maybeOpenBluetoothFirst();
 }
 
 window.onFirebaseUser = function (firebaseUser) {
@@ -2072,6 +2153,7 @@ async function disconnectBluetooth() {
   }
   bleDevice = null;
   selectedBtId = null;
+  releasePttAudio();
   setBluetoothUi(false);
 }
 
@@ -2079,33 +2161,37 @@ function renderBluetoothList() {
   const list = document.getElementById("btList");
   if (!list) return;
 
-  if (!navigator.bluetooth) {
-    list.innerHTML =
-      '<div class="pick-item warn">Bluetooth needs Chrome, Edge, or Windows app.</div>';
-    return;
+  let html = "";
+  const audioActive = btAudioReady ? " active" : "";
+  html += `<div class="pick-item pick-item-primary${audioActive}" data-bt-audio="1"><strong>Bluetooth mic / headset</strong><span class="pick-item-sub">Pair BT in phone Settings, then tap here (recommended)</span></div>`;
+
+  if (navigator.bluetooth) {
+    html += `<div class="pick-item add-row" data-bt-add="1">+ Add BLE device (optional)</div>`;
+    savedBtDevices.forEach((d) => {
+      const active = selectedBtId === d.id && bleDevice?.gatt?.connected ? " active" : "";
+      const conn = selectedBtId === d.id && bleDevice?.gatt?.connected ? " · connected" : "";
+      html += `<div class="pick-item${active}" data-bt-id="1">${escapeHtml(d.name)}${conn}</div>`;
+    });
+  } else {
+    html +=
+      '<div class="pick-item warn">BLE scan needs Chrome, Edge, or Windows app. Headset still works via “Bluetooth mic” above.</div>';
   }
 
-  let html = `<div class="pick-item add-row" data-bt-add="1">+ Add Bluetooth device</div>`;
-
-  savedBtDevices.forEach((d) => {
-    const active = selectedBtId === d.id && bleDevice ? " active" : "";
-    const conn = selectedBtId === d.id && bleDevice ? " · connected" : "";
-    html += `<div class="pick-item${active}" data-bt-id="1">${escapeHtml(d.name)}${conn}</div>`;
-  });
-
-  if (!savedBtDevices.length) {
-    html += '<div class="pick-item warn">No devices yet. Tap + Add above.</div>';
+  if (bleDevice?.gatt?.connected || btAudioReady) {
+    html += '<div class="pick-item warn" data-bt-disconnect="1" style="cursor:pointer">Disconnect Bluetooth</div>';
   }
 
   list.innerHTML = html;
 
+  list.querySelector("[data-bt-audio]")?.addEventListener("click", () => connectBluetoothAudio());
   list.querySelector("[data-bt-add]")?.addEventListener("click", () => addBluetoothDevice());
+  list.querySelector("[data-bt-disconnect]")?.addEventListener("click", () => disconnectBluetooth());
   const rows = list.querySelectorAll("[data-bt-id]");
   savedBtDevices.forEach((d, i) => {
     const el = rows[i];
     if (!el) return;
     el.addEventListener("click", () => {
-      if (selectedBtId === d.id && bleDevice) disconnectBluetooth();
+      if (selectedBtId === d.id && bleDevice?.gatt?.connected) disconnectBluetooth();
       else connectBluetoothDevice(d.id);
     });
   });
@@ -2523,17 +2609,30 @@ function isTypingInFormField() {
   return !!el.isContentEditable;
 }
 
-function startTalk(e) {
+async function startTalk(e) {
   if (e?.cancelable) e.preventDefault();
   if (!getActiveChannelName()) {
     openMenu();
+    toggleChannelPanel();
     return;
+  }
+  if (!isBluetoothReady()) {
+    openMenu();
+    toggleBluetoothMenu(true);
+    return;
+  }
+  if (!pttMediaStream) {
+    const ok = await connectBluetoothAudio();
+    if (!ok) return;
   }
   isTalking = true;
   setPttVisual(true);
   const ch = getActiveChannelTalkLabel() || getActiveChannelName();
+  const btNote = btAudioDeviceLabel ? ` · ${btAudioDeviceLabel}` : "";
   const el = document.getElementById("statusMain");
-  if (el) el.innerHTML = `<span class="accent">Live · ${escapeHtml(ch)}</span>`;
+  if (el) {
+    el.innerHTML = `<span class="accent">Live · ${escapeHtml(ch)}${escapeHtml(btNote)}</span>`;
+  }
 }
 
 function stopTalk(e) {
@@ -2657,6 +2756,7 @@ Object.assign(window, {
   signupWithGoogle,
   signup,
   disconnectBluetooth,
+  connectBluetoothAudio,
   startTalk,
   stopTalk,
   logout,
