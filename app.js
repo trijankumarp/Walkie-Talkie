@@ -363,7 +363,6 @@ function toggleWifiMenu(forceOpen) {
   if (next) {
     setWifiMenuOpen(true);
     setBluetoothMenuOpen(false);
-    if (!selectedWifiName) ensureWifiForDiscovery();
     refreshWifiList();
   } else {
     setWifiMenuOpen(false);
@@ -1342,7 +1341,7 @@ function updateWifiChip(connected, name) {
     chip.textContent = `WiFi: ${short}`;
     chip.classList.add("on");
   } else {
-    chip.textContent = "WiFi: Off";
+    chip.textContent = "WiFi: Optional";
     chip.classList.remove("on");
   }
 }
@@ -1455,7 +1454,7 @@ function setWifiStatus(connected, name) {
       el.textContent = `Selected — ${label}`;
       el.className = "conn-line connected";
     } else {
-      el.textContent = "Not selected — tap Same WiFi as channel below";
+      el.textContent = "Optional — skip if using Bluetooth offline below";
       el.className = "conn-line disconnected";
     }
   }
@@ -1514,7 +1513,6 @@ async function enterApp(user) {
   updatePttHint();
   updateMenuAvatar();
   renderSettingsList();
-  if (!btChannelCode) ensureWifiForDiscovery();
   if (selectedWifiName) setWifiStatus(true, selectedWifiName);
   renderBluetoothList();
   startChannelWifiSync();
@@ -2046,10 +2044,10 @@ function renderChannels() {
     return;
   }
 
-  if (!wifiKey) {
+  if (!wifiKey && !window.offlineTalk?.isActive?.()) {
     appendChannelEmpty(
       container,
-      "Open <strong>Bluetooth</strong> → set the same <strong>Walkie code</strong> on both phones (WiFi not required). Or use WiFi menu later."
+      "WiFi details not needed. Use <strong>Bluetooth</strong> → Walkie code, or <strong>No internet</strong> setup below."
     );
   } else if (nearbyLoading) {
     appendChannelEmpty(container, "Searching channels on your WiFi…");
@@ -2407,16 +2405,12 @@ async function refreshWifiList() {
           ? ""
           : "No extra networks found — you can still use “Same WiFi as channel” above."
       });
-      if (!selectedWifiName) {
-        selectWifiNetwork("channel-wifi");
-      }
       return;
     } catch (err) {
       renderWifiPickList({
         topHint: err.message || "WiFi scan failed.",
-        bottomHint: "Use “Same WiFi as channel” above to connect with other phones."
+        bottomHint: "WiFi is optional — use Bluetooth menu for offline talk."
       });
-      if (!selectedWifiName) selectWifiNetwork("channel-wifi");
       return;
     }
   }
@@ -2426,9 +2420,8 @@ async function refreshWifiList() {
   lastWifiConnected = "";
   renderWifiPickList({
     topHint: hint,
-    bottomHint: "After selecting WiFi, open Channel to search or join nearby channels."
+    bottomHint: "WiFi optional. Skip this menu if you use Bluetooth offline or Walkie code."
   });
-  if (!selectedWifiName) selectWifiNetwork("channel-wifi");
 }
 
 function cancelNameEdit() {
