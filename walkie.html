@@ -228,9 +228,9 @@
         <input type="password" id="loginPassword" placeholder="Enter password" autocomplete="current-password">
         <button class="btn" id="btnLogin" onclick="login()">LOGIN</button>
         <button type="button" class="btn btn-google" id="btnGoogle" onclick="loginWithGoogle()">
-          <span>G</span> Continue with Google
+          <span>G</span> Sign in with Google
         </button>
-        <p class="auth-hint">Use your Gmail or any email address to sign in</p>
+        <p class="auth-hint">Use Gmail or Google account to sign in</p>
       </div>
 
       <!-- Sign Up -->
@@ -247,6 +247,11 @@
         <label class="field-label" for="signupConfirm">Confirm Password</label>
         <input type="password" id="signupConfirm" placeholder="Re-enter password" autocomplete="new-password">
         <button class="btn" id="btnSignup" onclick="signup()">CREATE ACCOUNT</button>
+        <p class="auth-hint" style="margin:16px 0 8px;">— or —</p>
+        <button type="button" class="btn btn-google" id="btnGoogleSignup" onclick="signupWithGoogle()">
+          <span>G</span> Sign up with Google
+        </button>
+        <p class="auth-hint">New user? Google creates your account in one tap</p>
         <button type="button" class="btn btn-secondary" onclick="showAuthTab('login')">Already have account? Login</button>
       </div>
     </div>

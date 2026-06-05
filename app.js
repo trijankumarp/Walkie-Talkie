@@ -16,7 +16,7 @@ function setAuthError(msg) {
 }
 
 function setAuthLoading(loading) {
-  ["btnLogin", "btnSignup", "btnGoogle"].forEach((id) => {
+  ["btnLogin", "btnSignup", "btnGoogle", "btnGoogleSignup"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.disabled = loading;
   });
@@ -123,6 +123,11 @@ async function loginWithGoogle() {
   } finally {
     setAuthLoading(false);
   }
+}
+
+/** Google sign-up uses same Firebase flow (creates account if new). */
+async function signupWithGoogle() {
+  return loginWithGoogle();
 }
 
 function renderChannels() {
@@ -254,6 +259,7 @@ Object.assign(window, {
   showAuthTab,
   login,
   loginWithGoogle,
+  signupWithGoogle,
   signup,
   scanBluetooth,
   scanWiFi,
