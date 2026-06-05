@@ -8,10 +8,12 @@ import {
   serverTimestamp,
   limit
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
-import { ref, set, onValue, off } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
+import { ref, set, get, update, onValue, off } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
 
-const CHANNELS_KEY = "walkie_channels_v1";
+const CHANNELS_LEGACY_KEY = "walkie_channels_v1";
 const PUBLIC_CHANNELS_COLLECTION = "publicChannels";
+const USER_CHANNELS_PATH = "userChannels";
+const USER_SETTINGS_PATH = "userSettings";
 const CHANNEL_STALE_MS = 5 * 60 * 1000;
 const THEME_KEY = "walkie_theme_v1";
 const BT_DEVICES_KEY = "walkie_bt_devices_v1";
@@ -91,7 +93,10 @@ let nearbyRefreshTimer = null;
 let channelHeartbeatTimer = null;
 let channelSyncBackend = null;
 let nearbyRtdbRef = null;
+let userChannelsRtdbRef = null;
 let channelShareOk = false;
+let channelsLoading = false;
+let channelsCloudError = "";
 
 function generateChannelId() {
   return `CH-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -113,6 +118,20 @@ function normalizeChannelRecord(ch) {
   };
 }
 
+function channelsToCloudObject(list) {
+  const payload = {};
+  for (const ch of list) {
+    const n = normalizeChannelRecord(ch);
+    payload[String(n.id)] = n;
+  }
+  return payload;
+}
+
+function channelsFromCloudSnapshot(val) {
+  if (!val || typeof val !== "object") return [];
+  return Object.values(val).map(normalizeChannelRecord);
+}
+
 function migrateChannels() {
   let changed = false;
   channels = channels.map((ch) => {
@@ -123,15 +142,126 @@ function migrateChannels() {
   if (changed) saveChannels();
 }
 
-function loadChannels() {
+async function saveChannelsToCloud() {
+  const uid = loggedInUser?.uid;
+  const rtdb = getRealtimeDb();
+  if (!uid || !rtdb) return false;
   try {
-    const raw = localStorage.getItem(CHANNELS_KEY);
-    channels = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(channels)) channels = [];
+    await set(ref(rtdb, `${USER_CHANNELS_PATH}/${uid}`), channelsToCloudObject(channels));
+    channelsCloudError = "";
+    return true;
+  } catch (err) {
+    console.warn("Save channels failed", err);
+    channelsCloudError = mapSyncError(err);
+    return false;
+  }
+}
+
+async function saveCurrentChannelToCloud() {
+  const uid = loggedInUser?.uid;
+  const rtdb = getRealtimeDb();
+  if (!uid || !rtdb) return;
+  try {
+    await update(ref(rtdb, `${USER_SETTINGS_PATH}/${uid}`), {
+      currentChannel: currentChannel ?? null,
+      updatedAt: Date.now()
+    });
+  } catch (err) {
+    console.warn("Save active channel failed", err);
+  }
+}
+
+function saveChannels() {
+  void saveChannelsToCloud();
+  void saveCurrentChannelToCloud();
+}
+
+async function migrateLegacyLocalChannels(uid, rtdb) {
+  try {
+    const raw = localStorage.getItem(CHANNELS_LEGACY_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.length) {
+      localStorage.removeItem(CHANNELS_LEGACY_KEY);
+      return false;
+    }
+    channels = parsed.map(normalizeChannelRecord);
+    await set(ref(rtdb, `${USER_CHANNELS_PATH}/${uid}`), channelsToCloudObject(channels));
+    localStorage.removeItem(CHANNELS_LEGACY_KEY);
+    return true;
   } catch {
+    return false;
+  }
+}
+
+async function loadChannelsFromCloud() {
+  channels = [];
+  channelsLoading = true;
+  channelsCloudError = "";
+  const uid = loggedInUser?.uid;
+  const rtdb = getRealtimeDb();
+  if (!uid) {
+    channelsLoading = false;
+    return;
+  }
+  if (!rtdb) {
+    channelsCloudError =
+      'Cloud database required. <a href="https://console.firebase.google.com/project/walkietalkie-mos/database" target="_blank" rel="noopener">Create Realtime Database</a> and publish <code>database.rules.json</code> rules.';
+    channelsLoading = false;
+    return;
+  }
+  try {
+    const snap = await get(ref(rtdb, `${USER_CHANNELS_PATH}/${uid}`));
+    if (snap.exists()) {
+      channels = channelsFromCloudSnapshot(snap.val());
+    } else {
+      await migrateLegacyLocalChannels(uid, rtdb);
+    }
+    const settingsSnap = await get(ref(rtdb, `${USER_SETTINGS_PATH}/${uid}`));
+    const savedCurrent = settingsSnap.val()?.currentChannel;
+    if (savedCurrent != null && channels.some((c) => c.id === savedCurrent)) {
+      currentChannel = savedCurrent;
+    } else if (channels.length) {
+      currentChannel = channels[0].id;
+    } else {
+      currentChannel = null;
+    }
+    migrateChannels();
+  } catch (err) {
+    console.warn("Load channels failed", err);
+    channelsCloudError = mapSyncError(err);
     channels = [];
   }
-  migrateChannels();
+  channelsLoading = false;
+}
+
+function stopUserChannelsListener() {
+  if (userChannelsRtdbRef) {
+    off(userChannelsRtdbRef);
+    userChannelsRtdbRef = null;
+  }
+}
+
+function startUserChannelsListener(uid) {
+  const rtdb = getRealtimeDb();
+  if (!rtdb || !uid) return;
+  stopUserChannelsListener();
+  userChannelsRtdbRef = ref(rtdb, `${USER_CHANNELS_PATH}/${uid}`);
+  onValue(userChannelsRtdbRef, (snap) => {
+    if (!isLoggedIn || loggedInUser?.uid !== uid) return;
+    channels = snap.exists() ? channelsFromCloudSnapshot(snap.val()) : [];
+    if (currentChannel != null && !channels.some((c) => c.id === currentChannel)) {
+      currentChannel = channels.length ? channels[0].id : null;
+      void saveCurrentChannelToCloud();
+    }
+    if (channelPanelOpen) renderChannels();
+    updatePttHint();
+    refreshStatusBar();
+  });
+}
+
+function loadChannels() {
+  /* channels load from Firebase after login — no local database */
 }
 
 function getChannelMetaLine(ch) {
@@ -140,10 +270,6 @@ function getChannelMetaLine(ch) {
   const uid = ch.channelId || "";
   if (freq && uid) return `${freq} · ${uid}`;
   return freq || uid;
-}
-
-function saveChannels() {
-  localStorage.setItem(CHANNELS_KEY, JSON.stringify(channels));
 }
 
 function getActiveChannel() {
@@ -1274,7 +1400,7 @@ function buildLoggedInUser(user) {
   };
 }
 
-function enterApp(user) {
+async function enterApp(user) {
   isLoggedIn = true;
   loggedInUser = buildLoggedInUser(user);
   const uid = loggedInUser.uid;
@@ -1282,12 +1408,15 @@ function enterApp(user) {
     const suggested = suggestUserIdFromEmail(loggedInUser.email);
     if (suggested.length >= 3) saveProfileExtra(uid, { userId: suggested });
   }
-  loadChannels();
   loadFriends();
   loadBtDevices();
   loadSelectedWifi();
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("mainUI").style.display = "block";
+  channelsLoading = true;
+  renderChannels();
+  await loadChannelsFromCloud();
+  startUserChannelsListener(uid);
   refreshStatusBar();
   renderChannels();
   updatePttHint();
@@ -1689,11 +1818,14 @@ function stopChannelWifiSync() {
   if (channelHeartbeatTimer) clearInterval(channelHeartbeatTimer);
   channelHeartbeatTimer = null;
   stopNearbyListener();
+  stopUserChannelsListener();
   channelSyncBackend = null;
   nearbyChannels = [];
   nearbyLoading = false;
   nearbySearchError = "";
   channelShareOk = false;
+  channelsLoading = false;
+  channelsCloudError = "";
 }
 
 function appendChannelEmpty(container, html) {
@@ -1715,6 +1847,7 @@ function selectLocalChannel(id) {
   renderChannels();
   refreshStatusBar();
   updatePttHint();
+  void saveCurrentChannelToCloud();
   publishActiveChannelToWifi();
   closeMenu();
 }
@@ -1736,7 +1869,8 @@ function joinNearbyChannel(publicId) {
   });
   channels.push(record);
   currentChannel = newId;
-  saveChannels();
+  void saveChannelsToCloud();
+  void saveCurrentChannelToCloud();
   renderChannels();
   updatePttHint();
   publishActiveChannelToWifi();
@@ -1790,6 +1924,15 @@ function renderChannels() {
   container.innerHTML = "";
   const query = getChannelSearchQuery();
   const wifiKey = getWifiDiscoveryKey();
+
+  if (channelsLoading) {
+    appendChannelEmpty(container, "Loading your channels from cloud…");
+    return;
+  }
+  if (channelsCloudError) {
+    appendChannelEmpty(container, channelsCloudError);
+    return;
+  }
 
   if (!wifiKey) {
     appendChannelEmpty(
@@ -1850,13 +1993,14 @@ function renderChannels() {
   updatePttHint();
 }
 
-function deleteChannel(id) {
+async function deleteChannel(id) {
   if (!confirm("Delete this channel?")) return;
   channels = channels.filter((ch) => ch.id !== id);
   if (currentChannel === id) {
     currentChannel = channels.length ? channels[0].id : null;
   }
-  saveChannels();
+  await saveChannelsToCloud();
+  await saveCurrentChannelToCloud();
   renderChannels();
   publishAllChannelsToWifi();
 }
@@ -1869,7 +2013,7 @@ function parseChannelFrequency(raw) {
   return num.toFixed(4);
 }
 
-function addNewChannel() {
+async function addNewChannel() {
   const input = document.getElementById("newChannelName");
   const freqInput = document.getElementById("newChannelFreq");
   const name = input?.value.trim();
@@ -1888,7 +2032,15 @@ function addNewChannel() {
   currentChannel = newId;
   if (input) input.value = "";
   if (freqInput) freqInput.value = "";
-  saveChannels();
+  const ok = await saveChannelsToCloud();
+  if (!ok && channelsCloudError) {
+    alert(channelsCloudError.replace(/<[^>]+>/g, ""));
+    channels = channels.filter((c) => c.id !== newId);
+    currentChannel = channels.length ? channels[0].id : null;
+    renderChannels();
+    return;
+  }
+  await saveCurrentChannelToCloud();
   renderChannels();
   updatePttHint();
   publishAllChannelsToWifi();
@@ -2406,6 +2558,8 @@ function stopTalk(e) {
 
 async function logout() {
   isLoggedIn = false;
+  channels = [];
+  currentChannel = null;
   stopChannelWifiSync();
   stopTalk();
   closeMenu();
