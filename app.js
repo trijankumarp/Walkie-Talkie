@@ -3,7 +3,29 @@ const THEME_KEY = "walkie_theme_v1";
 const BT_DEVICES_KEY = "walkie_bt_devices_v1";
 const WIFI_SEL_KEY = "walkie_wifi_selected_v1";
 const PROFILE_MOBILE_KEY = "walkie_profile_mobile_v1";
+const PROFILE_AVATAR_KEY = "walkie_avatar_v1";
+const PROFILE_COUNTRY_KEY = "walkie_country_v1";
+const BIOMETRIC_KEY = "walkie_biometric_v1";
 const FRIENDS_KEY = "walkie_friends_v1";
+
+const COUNTRY_CODES = [
+  { code: "+91", label: "IN +91", country: "India" },
+  { code: "+1", label: "US +1", country: "United States" },
+  { code: "+44", label: "UK +44", country: "United Kingdom" },
+  { code: "+971", label: "AE +971", country: "UAE" },
+  { code: "+61", label: "AU +61", country: "Australia" },
+  { code: "+65", label: "SG +65", country: "Singapore" },
+  { code: "+81", label: "JP +81", country: "Japan" },
+  { code: "+86", label: "CN +86", country: "China" },
+  { code: "+49", label: "DE +49", country: "Germany" },
+  { code: "+33", label: "FR +33", country: "France" },
+  { code: "+92", label: "PK +92", country: "Pakistan" },
+  { code: "+880", label: "BD +880", country: "Bangladesh" },
+  { code: "+94", label: "LK +94", country: "Sri Lanka" },
+  { code: "+977", label: "NP +977", country: "Nepal" }
+];
+
+const AVATAR_EMOJIS = ["😀", "🎙", "📻", "🔊", "👤", "🦊", "🐻", "🐼", "🦁", "🐯", "🐸", "🐵", "🐶", "🐱", "🌟", "⚡", "🔥", "💎", "🎯", "🚀", "🎧", "📡", "🛡", "✨"];
 
 let isLoggedIn = false;
 let wifiConnectedName = null;
@@ -15,7 +37,7 @@ let bleDevice = null;
 let loggedInUser = null;
 let btPanelOpen = false;
 let wifiPanelOpen = false;
-let profilePanelOpen = false;
+let settingsPanelOpen = false;
 let friendPanelOpen = false;
 let teamPanelOpen = false;
 let friends = [];
@@ -57,6 +79,7 @@ function updatePttHint() {
 function openMenu() {
   document.getElementById("menuOverlay")?.classList.add("open");
   document.getElementById("sideMenu")?.classList.add("open");
+  if (isLoggedIn) updateMenuAvatar();
 }
 
 function closeMenu() {
@@ -130,11 +153,165 @@ function toggleFriendPanel() {
   if (friendPanelOpen) renderFriends();
 }
 
-function toggleProfilePanel() {
-  profilePanelOpen = !profilePanelOpen;
-  document.getElementById("btnProfileAction")?.classList.toggle("selected", profilePanelOpen);
-  document.getElementById("profilePanel")?.classList.toggle("open", profilePanelOpen);
-  if (profilePanelOpen) fillProfileForm();
+function toggleSettingsPanel() {
+  settingsPanelOpen = !settingsPanelOpen;
+  document.getElementById("btnSettingsAction")?.classList.toggle("selected", settingsPanelOpen);
+  document.getElementById("settingsPanel")?.classList.toggle("open", settingsPanelOpen);
+  if (settingsPanelOpen) fillProfileForm();
+}
+
+function getInitials(name) {
+  if (!name) return "?";
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function getStoredAvatar() {
+  const uid = getProfileUid();
+  if (!uid) return null;
+  return localStorage.getItem(`${PROFILE_AVATAR_KEY}_${uid}`);
+}
+
+function applyAvatarToElement(el, avatar, name) {
+  if (!el) return;
+  el.style.backgroundImage = "";
+  el.classList.remove("emoji");
+  if (avatar?.startsWith("emoji:")) {
+    el.textContent = avatar.slice(6);
+    el.classList.add("emoji");
+  } else if (avatar?.startsWith("data:image")) {
+    el.style.backgroundImage = `url(${avatar})`;
+    el.textContent = "";
+  } else {
+    el.textContent = getInitials(name);
+  }
+}
+
+function updateMenuAvatar() {
+  const av = getStoredAvatar();
+  const name = loggedInUser?.name || "User";
+  applyAvatarToElement(document.getElementById("menuAvatar"), av, name);
+  applyAvatarToElement(document.getElementById("settingsAvatarPreview"), av, name);
+  const nameEl = document.getElementById("menuUserName");
+  if (nameEl) nameEl.textContent = name;
+}
+
+function saveAvatar(data) {
+  const uid = getProfileUid();
+  if (!uid) return;
+  localStorage.setItem(`${PROFILE_AVATAR_KEY}_${uid}`, data);
+  updateMenuAvatar();
+}
+
+function resizeImageFile(file, maxSize, quality) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function initAvatarPickers() {
+  const grid = document.getElementById("emojiGrid");
+  if (grid && !grid.childElementCount) {
+    AVATAR_EMOJIS.forEach((em) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "emoji-pick";
+      b.textContent = em;
+      b.onclick = () => {
+        saveAvatar(`emoji:${em}`);
+        setProfileMsg("Profile picture updated.");
+      };
+      grid.appendChild(b);
+    });
+  }
+
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const dataUrl = await resizeImageFile(file, 256, 0.82);
+      saveAvatar(dataUrl);
+      setProfileMsg("Photo saved.");
+    } catch {
+      setProfileMsg("Could not load image.", true);
+    }
+  };
+
+  document.getElementById("avatarGalleryInput")?.addEventListener("change", onFile);
+  document.getElementById("avatarCameraInput")?.addEventListener("change", onFile);
+}
+
+function initCountrySelect() {
+  const sel = document.getElementById("profileCountry");
+  if (!sel || sel.options.length) return;
+  COUNTRY_CODES.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.code;
+    opt.textContent = c.label;
+    opt.title = c.country;
+    sel.appendChild(opt);
+  });
+}
+
+function onBiometricToggle(enabled) {
+  const uid = getProfileUid();
+  if (!uid) return;
+  localStorage.setItem(`${BIOMETRIC_KEY}_${uid}`, enabled ? "1" : "0");
+  if (!enabled) setProfileMsg("Biometric login off.");
+}
+
+async function setupBiometric() {
+  const uid = getProfileUid();
+  if (!uid) return setProfileMsg("Login first.", true);
+  if (!window.PublicKeyCredential) {
+    return setProfileMsg("Biometric not supported on this browser.", true);
+  }
+  try {
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    await navigator.credentials.create({
+      publicKey: {
+        challenge,
+        rp: { name: "Walkie Talkie", id: window.location.hostname || "localhost" },
+        user: {
+          id: new TextEncoder().encode(uid),
+          name: loggedInUser.email || uid,
+          displayName: loggedInUser.name || "User"
+        },
+        pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+        authenticatorSelection: {
+          authenticatorAttachment: "platform",
+          userVerification: "required"
+        },
+        timeout: 60000
+      }
+    });
+    localStorage.setItem(`${BIOMETRIC_KEY}_${uid}`, "1");
+    const cb = document.getElementById("profileBiometric");
+    if (cb) cb.checked = true;
+    setProfileMsg("Biometric enabled on this device.");
+  } catch (err) {
+    setProfileMsg(err.message || "Biometric setup cancelled.", true);
+  }
 }
 
 function loadFriends() {
@@ -208,15 +385,34 @@ function setProfileMsg(msg, isError) {
 
 function fillProfileForm() {
   if (!loggedInUser) return;
+  initCountrySelect();
+  initAvatarPickers();
+  updateMenuAvatar();
+
   const name = document.getElementById("profileName");
   const email = document.getElementById("profileEmail");
   const mobile = document.getElementById("profileMobile");
+  const country = document.getElementById("profileCountry");
+  const bio = document.getElementById("profileBiometric");
+
   if (name) name.value = loggedInUser.name || "";
   if (email) email.value = loggedInUser.email || "";
-  if (mobile) {
-    const uid = loggedInUser.uid || loggedInUser.email;
-    mobile.value = localStorage.getItem(`${PROFILE_MOBILE_KEY}_${uid}`) || "";
+
+  const uid = getProfileUid();
+  if (mobile && country) {
+    const raw = localStorage.getItem(`${PROFILE_MOBILE_KEY}_${uid}`);
+    let parsed = { country: "+91", number: "" };
+    try {
+      if (raw?.startsWith("{")) parsed = JSON.parse(raw);
+      else if (raw) parsed = { country: "+91", number: raw };
+    } catch {
+      if (raw) parsed = { country: "+91", number: raw };
+    }
+    const savedCountry = localStorage.getItem(`${PROFILE_COUNTRY_KEY}_${uid}`);
+    country.value = savedCountry || parsed.country || "+91";
+    mobile.value = parsed.number || "";
   }
+  if (bio) bio.checked = localStorage.getItem(`${BIOMETRIC_KEY}_${uid}`) === "1";
 }
 
 function getProfileUid() {
@@ -383,6 +579,7 @@ function enterApp(user) {
   refreshStatusBar();
   renderChannels();
   updatePttHint();
+  updateMenuAvatar();
   if (selectedWifiName) setWifiStatus(true, selectedWifiName);
   renderBluetoothList();
 }
@@ -792,6 +989,7 @@ async function saveProfileName() {
     await window.mosAuth.updateDisplayName(name);
     loggedInUser.name = name;
     refreshStatusBar();
+    updateMenuAvatar();
     setProfileMsg("Name updated.");
   } catch (err) {
     setProfileMsg(window.mosAuth.mapError(err), true);
@@ -814,11 +1012,13 @@ async function saveProfileEmail() {
 }
 
 async function saveProfileMobile() {
-  const mobile = document.getElementById("profileMobile")?.value.trim();
+  const number = document.getElementById("profileMobile")?.value.trim();
+  const country = document.getElementById("profileCountry")?.value || "+91";
   const uid = getProfileUid();
-  if (!mobile) return setProfileMsg("Enter mobile number.", true);
-  localStorage.setItem(`${PROFILE_MOBILE_KEY}_${uid}`, mobile);
-  setProfileMsg("Mobile number saved.");
+  if (!number) return setProfileMsg("Enter mobile number.", true);
+  localStorage.setItem(`${PROFILE_MOBILE_KEY}_${uid}`, JSON.stringify({ country, number }));
+  localStorage.setItem(`${PROFILE_COUNTRY_KEY}_${uid}`, country);
+  setProfileMsg(`Mobile saved: ${country} ${number}`);
 }
 
 async function saveProfilePassword() {
@@ -871,13 +1071,13 @@ async function logout() {
   closeMenu();
   setBluetoothMenuOpen(false);
   setWifiMenuOpen(false);
-  profilePanelOpen = false;
+  settingsPanelOpen = false;
   friendPanelOpen = false;
   teamPanelOpen = false;
-  ["btnProfileAction", "btnFriendAction", "btnBluetoothMenu", "btnWifiMenu", "btnTeamAction"].forEach((id) => {
+  ["btnSettingsAction", "btnFriendAction", "btnBluetoothMenu", "btnWifiMenu", "btnTeamAction"].forEach((id) => {
     document.getElementById(id)?.classList.remove("selected");
   });
-  ["profilePanel", "friendPanel", "teamPanel"].forEach((id) => {
+  ["settingsPanel", "friendPanel", "teamPanel"].forEach((id) => {
     document.getElementById(id)?.classList.remove("open");
   });
   await disconnectBluetooth();
@@ -894,6 +1094,8 @@ async function logout() {
 
 function boot() {
   initTheme();
+  initCountrySelect();
+  initAvatarPickers();
   loadChannels();
   loadFriends();
   loadBtDevices();
@@ -930,7 +1132,9 @@ Object.assign(window, {
   toggleWifiMenu,
   toggleTeamPanel,
   toggleFriendPanel,
-  toggleProfilePanel,
+  toggleSettingsPanel,
+  setupBiometric,
+  onBiometricToggle,
   addFriend,
   removeFriend,
   refreshWifiList,

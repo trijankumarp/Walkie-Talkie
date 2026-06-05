@@ -422,10 +422,107 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 12px;
       padding: 16px;
       border-bottom: 1px solid var(--border);
     }
-    .menu-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
+    .menu-user {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+      flex: 1;
+    }
+    .menu-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      flex-shrink: 0;
+      background-size: cover;
+      background-position: center;
+    }
+    .menu-avatar.emoji { font-size: 26px; font-weight: 400; }
+    .menu-user-name {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .phone-row {
+      display: flex;
+      gap: 8px;
+      margin: 6px 0 10px;
+    }
+    .phone-row select {
+      width: 108px;
+      flex-shrink: 0;
+      padding: 12px 8px;
+      margin: 0;
+      font-size: 14px;
+    }
+    .phone-row input { flex: 1; margin: 0; }
+    .avatar-preview {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      margin: 0 auto 12px;
+      background: var(--accent-soft);
+      border: 1px solid var(--border);
+      background-size: cover;
+      background-position: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      font-weight: 600;
+    }
+    .avatar-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .avatar-actions .btn-sm { flex: 1; min-width: 90px; margin: 0; }
+    .emoji-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .emoji-pick {
+      border: 1px solid var(--border);
+      background: var(--bg-panel);
+      border-radius: 8px;
+      font-size: 22px;
+      padding: 6px;
+      cursor: pointer;
+      line-height: 1.2;
+    }
+    .emoji-pick:hover { background: var(--accent-soft); }
+    .bio-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 8px 0 12px;
+      font-size: 14px;
+      color: var(--text);
+    }
+    .bio-row input { width: 18px; height: 18px; accent-color: var(--text); }
     .menu-close {
       width: 36px;
       height: 36px;
@@ -788,28 +885,54 @@
   <div id="menuOverlay" class="menu-overlay" onclick="closeMenu()"></div>
   <nav id="sideMenu" class="side-menu" aria-label="App menu">
     <div class="menu-head">
-      <h2>Menu</h2>
+      <div class="menu-user">
+        <div class="menu-avatar" id="menuAvatar">?</div>
+        <span class="menu-user-name" id="menuUserName">User</span>
+      </div>
       <button type="button" class="menu-close" onclick="closeMenu()" aria-label="Close menu">×</button>
     </div>
 
-    <!-- 1. Profile -->
+    <!-- 1. Settings -->
     <div class="menu-block">
-      <button type="button" class="menu-theme-row" id="btnProfileAction" onclick="toggleProfilePanel()">
+      <button type="button" class="menu-theme-row" id="btnSettingsAction" onclick="toggleSettingsPanel()">
         <span class="menu-row-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </span>
-        Profile
+        Settings
       </button>
-      <div id="profilePanel" class="menu-panel">
+      <div id="settingsPanel" class="menu-panel">
+        <p class="field-label">Profile picture</p>
+        <div class="avatar-preview" id="settingsAvatarPreview">?</div>
+        <div class="avatar-actions">
+          <button type="button" class="btn btn-sm" onclick="document.getElementById('avatarGalleryInput').click()">Gallery</button>
+          <button type="button" class="btn btn-sm" onclick="document.getElementById('avatarCameraInput').click()">Take picture</button>
+        </div>
+        <input type="file" id="avatarGalleryInput" accept="image/*" hidden>
+        <input type="file" id="avatarCameraInput" accept="image/*" capture="user" hidden>
+        <p class="field-label" style="margin-top:4px;">Or pick emoji</p>
+        <div class="emoji-grid" id="emojiGrid"></div>
+
         <label class="field-label profile-field" for="profileName">Name</label>
         <input type="text" id="profileName" placeholder="Your name" autocomplete="name">
         <button type="button" class="btn btn-sm" onclick="saveProfileName()">Save name</button>
+
         <label class="field-label profile-field" for="profileEmail">Email</label>
         <input type="email" id="profileEmail" placeholder="Email" autocomplete="email">
         <button type="button" class="btn btn-sm" onclick="saveProfileEmail()">Save email</button>
-        <label class="field-label profile-field" for="profileMobile">Mobile number</label>
-        <input type="tel" id="profileMobile" placeholder="10-digit mobile" autocomplete="tel">
+
+        <label class="field-label profile-field">Mobile number</label>
+        <div class="phone-row">
+          <select id="profileCountry" aria-label="Country code"></select>
+          <input type="tel" id="profileMobile" placeholder="Phone number" autocomplete="tel">
+        </div>
         <button type="button" class="btn btn-sm" onclick="saveProfileMobile()">Save mobile</button>
+
+        <div class="bio-row">
+          <span>Biometric login</span>
+          <input type="checkbox" id="profileBiometric" onchange="onBiometricToggle(this.checked)">
+        </div>
+        <button type="button" class="btn btn-sm" onclick="setupBiometric()">Set up fingerprint / Face ID</button>
+
         <label class="field-label profile-field" for="profileCurrentPass">Current password</label>
         <input type="password" id="profileCurrentPass" placeholder="For email / password change" autocomplete="current-password">
         <label class="field-label profile-field" for="profileNewPass">New password</label>
