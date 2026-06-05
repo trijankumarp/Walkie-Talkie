@@ -977,6 +977,24 @@
       padding: 10px 12px;
       font-size: 14px;
     }
+    .offline-talk-box {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .offline-code {
+      width: 100%;
+      box-sizing: border-box;
+      margin: 0 0 8px;
+      padding: 10px;
+      font-size: 11px;
+      font-family: ui-monospace, monospace;
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      resize: vertical;
+    }
 
     .profile-msg {
       font-size: 12px;
@@ -1422,10 +1440,24 @@
       </button>
       <div id="btPanel" class="menu-panel">
         <div class="help-box" style="margin-bottom:8px;">
-          <strong>Bluetooth only (no WiFi)</strong> — set the same <strong>Walkie code</strong> on both phones, tap <strong>Bluetooth mic / headset</strong>, then Channel → Hold to talk. Needs mobile data (not WiFi). Two phones talking with zero internet needs a native app (coming later).
+          <strong>Bluetooth</strong> — headset: tap <strong>Bluetooth mic</strong>. <strong>No internet at all:</strong> scroll down → <strong>No internet</strong> steps (phone hotspot, copy codes).
         </div>
         <div id="btStatus" class="conn-line disconnected">Not connected</div>
         <div class="pick-list" id="btList"></div>
+        <div class="offline-talk-box">
+          <p class="profile-hint" style="text-align:left;margin:12px 0 8px;"><strong>No internet</strong> — one phone hotspot ON (mobile data OFF ok). Both join that WiFi. Copy codes below (WhatsApp message ok once).</p>
+          <p id="offlineTalkStatus" class="profile-msg"></p>
+          <label class="field-label">1. Host — create offer</label>
+          <button type="button" class="btn btn-sm" style="width:100%;margin-bottom:8px" onclick="offlineTalk.hostCreateOffer()">Create OFFER code</button>
+          <textarea id="offlineOfferOut" class="offline-code" rows="3" readonly placeholder="OFFER code appears here"></textarea>
+          <label class="field-label">2. Join phone — paste offer</label>
+          <textarea id="offlineOfferIn" class="offline-code" rows="3" placeholder="Paste host OFFER code"></textarea>
+          <button type="button" class="btn btn-sm" style="width:100%;margin:8px 0" onclick="offlineTalk.joinApplyOffer()">Create ANSWER code</button>
+          <textarea id="offlineAnswerOut" class="offline-code" rows="3" readonly placeholder="ANSWER code"></textarea>
+          <label class="field-label">3. Host — paste answer</label>
+          <textarea id="offlineAnswerIn" class="offline-code" rows="3" placeholder="Paste ANSWER code"></textarea>
+          <button type="button" class="btn btn-sm" style="width:100%" onclick="offlineTalk.hostApplyAnswer()">Connect (no internet)</button>
+        </div>
       </div>
     </div>
 
@@ -1511,6 +1543,7 @@
   </nav>
 
   <script src="firebase-config.js"></script>
+  <script src="offline-talk.js"></script>
   <script type="module" src="auth.js"></script>
   <script type="module" src="app.js"></script>
 </body>

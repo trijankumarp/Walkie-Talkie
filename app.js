@@ -301,7 +301,9 @@ function updatePttHint() {
   const label = getActiveChannelTalkLabel();
   hint.textContent = label
     ? `Hold to talk on ${label}`
-    : "Menu → Bluetooth first, then Channel, then Hold to talk";
+    : window.offlineTalk?.isActive?.()
+      ? "Hold to talk — offline (no internet)"
+      : "Menu → Bluetooth → No internet setup, or Channel";
 }
 
 function openMenu() {
@@ -2644,6 +2646,14 @@ function isTypingInFormField() {
 
 async function startTalk(e) {
   if (e?.cancelable) e.preventDefault();
+  if (window.offlineTalk?.isActive?.()) {
+    window.offlineTalk.startTransmit();
+    isTalking = true;
+    setPttVisual(true);
+    const el = document.getElementById("statusMain");
+    if (el) el.innerHTML = '<span class="accent">Live · Offline (no internet)</span>';
+    return;
+  }
   if (!getActiveChannelName()) {
     openMenu();
     toggleChannelPanel();
@@ -2671,6 +2681,9 @@ async function startTalk(e) {
 function stopTalk(e) {
   if (e?.cancelable) e.preventDefault();
   if (!isTalking) return;
+  if (window.offlineTalk?.isActive?.()) {
+    window.offlineTalk.stopTransmit();
+  }
   isTalking = false;
   setPttVisual(false);
   refreshStatusBar();
@@ -2681,6 +2694,7 @@ async function logout() {
   channels = [];
   currentChannel = null;
   stopChannelWifiSync();
+  window.offlineTalk?.cleanup?.();
   stopTalk();
   closeMenu();
   setBluetoothMenuOpen(false);

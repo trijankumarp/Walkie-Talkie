@@ -29,6 +29,7 @@
       "index.html",
       "auth.js",
       "app.js",
+      "offline-talk.js",
       "manifest.json",
       "firebase-config.js",
       "firebase-config.deploy.js",
