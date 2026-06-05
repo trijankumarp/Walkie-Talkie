@@ -982,6 +982,9 @@
       padding-top: 12px;
       border-top: 1px solid var(--border);
     }
+    .menu-block.menu-hidden {
+      display: none;
+    }
     .offline-code {
       width: 100%;
       box-sizing: border-box;
@@ -1440,7 +1443,7 @@
       </button>
       <div id="btPanel" class="menu-panel">
         <div class="help-box" style="margin-bottom:8px;">
-          <strong>Bluetooth</strong> — headset: tap <strong>Bluetooth mic</strong>. <strong>No internet at all:</strong> scroll down → <strong>No internet</strong> steps (phone hotspot, copy codes).
+          <strong>Offline → Bluetooth kavali.</strong> Headset: <strong>Bluetooth mic</strong>. Internet lekunda: scroll down → connect (hotspot + codes). <strong>Online (net) → WiFi avasaram ledu.</strong>
         </div>
         <div id="btStatus" class="conn-line disconnected">Not connected</div>
         <div class="pick-list" id="btList"></div>
@@ -1504,8 +1507,8 @@
       </div>
     </div>
 
-    <!-- 5. WiFi -->
-    <div class="menu-block">
+    <!-- 5. WiFi (offline legacy only — hidden when internet on) -->
+    <div class="menu-block" id="wifiMenuBlock">
       <button type="button" class="menu-theme-row" id="btnWifiMenu" onclick="toggleWifiMenu()">
         <span class="menu-row-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
@@ -1514,7 +1517,7 @@
       </button>
       <div id="wifiPanel" class="menu-panel">
         <div class="help-box" style="margin-bottom:8px;">
-          <strong>WiFi (optional)</strong> — normal WiFi name/type cheyalsina avasaram ledu. Cloud channels kosam matrame “Same WiFi as channel”. Offline ki Bluetooth menu chudu.
+          <strong>WiFi menu — online lo use cheyakandi.</strong> Net unte WiFi details avasaram ledu. Offline ki Bluetooth menu use cheyandi.
         </div>
         <div id="wifiStatus" class="conn-line disconnected">Not connected</div>
         <div class="pick-list" id="wifiList"></div>

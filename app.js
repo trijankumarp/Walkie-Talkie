@@ -304,8 +304,8 @@ function updatePttHint() {
     : window.offlineTalk?.isActive?.()
       ? "Hold to talk — offline (no internet)"
       : isOnlineWalkieMode()
-        ? "Internet on — Channel select chesi Hold to talk"
-        : "Menu → Bluetooth or Channel";
+        ? "Net on — Channel select, Hold to talk (no WiFi)"
+        : "Offline — Bluetooth required, then Hold to talk";
 }
 
 function openMenu() {
@@ -361,6 +361,10 @@ function toggleBluetoothMenu(forceOpen) {
 }
 
 function toggleWifiMenu(forceOpen) {
+  if (isOnlineWalkieMode()) {
+    alert("Internet is on — WiFi setup is not needed. Open Channel and talk.");
+    return;
+  }
   const next = forceOpen === true ? true : forceOpen === false ? false : !wifiPanelOpen;
   if (next) {
     setWifiMenuOpen(true);
@@ -1709,19 +1713,40 @@ async function ensureOnlineMic() {
 }
 
 function updateOnlineWalkieUi() {
+  const online = isOnlineWalkieMode();
   const hint = document.getElementById("pttHint");
-  if (hint && isOnlineWalkieMode() && !window.offlineTalk?.isActive?.()) {
-    hint.textContent = getActiveChannelName()
-      ? "Internet on — Hold to talk"
-      : "Internet on — open Channel (no WiFi setup needed)";
+  if (hint && !window.offlineTalk?.isActive?.()) {
+    if (online) {
+      hint.textContent = getActiveChannelName()
+        ? "Net on — Hold to talk (WiFi not needed)"
+        : "Net on — open Channel only (no WiFi, no Bluetooth required)";
+    } else {
+      hint.textContent = getActiveChannelName()
+        ? "Offline — Hold to talk (Bluetooth connected)"
+        : "Offline — open Bluetooth menu first (required)";
+    }
   }
   const offlineBox = document.querySelector(".offline-talk-box");
-  if (offlineBox) offlineBox.style.display = isOnlineWalkieMode() ? "none" : "block";
+  if (offlineBox) offlineBox.style.display = online ? "none" : "block";
+  document.getElementById("wifiMenuBlock")?.classList.toggle("menu-hidden", online);
   const wifiChip = document.getElementById("wifiChip");
-  if (wifiChip && isOnlineWalkieMode()) {
-    wifiChip.textContent = "Internet: On";
-    wifiChip.classList.add("on");
+  if (wifiChip) {
+    wifiChip.style.display = online ? "none" : "";
+    if (!online) {
+      wifiChip.textContent = selectedWifiName ? `WiFi: ${formatWifiDisplayName(selectedWifiName)}` : "WiFi: Optional";
+      wifiChip.classList.toggle("on", !!selectedWifiName);
+    }
   }
+  const btChip = document.getElementById("btChip");
+  if (btChip && online) {
+    updateBtChip(isBluetoothReady(), btAudioDeviceLabel || (getActiveChannelName() ? "Headset optional" : null));
+  }
+  if (channelPanelOpen) renderChannels();
+  if (btPanelOpen) renderBluetoothList();
+}
+
+function isOfflineWalkieReady() {
+  return window.offlineTalk?.isActive?.() || isBluetoothReady();
 }
 
 function getFirestoreDb() {
@@ -2097,7 +2122,7 @@ function renderChannels() {
       container,
       isOnlineWalkieMode()
         ? "Internet is on — create or select a channel above. No WiFi or Bluetooth setup needed."
-        : "No internet — use <strong>Bluetooth</strong> → Walkie code, or offline setup below."
+        : "Offline — <strong>Bluetooth required</strong> (menu above). No WiFi needed when internet returns."
     );
   } else if (nearbyLoading) {
     appendChannelEmpty(container, "Searching channels on your WiFi…");
@@ -2237,13 +2262,17 @@ function renderBluetoothList() {
   if (!list) return;
 
   let html = "";
-  const codeVal = btChannelCode || "";
-  html += `
+  if (!isOnlineWalkieMode()) {
+    const codeVal = btChannelCode || "";
+    html += `
     <div class="bt-code-row">
       <input type="text" id="btChannelCodeInput" class="bt-code-input" placeholder="Walkie code (e.g. 1234)" maxlength="12" value="${escapeHtml(codeVal)}" autocomplete="off">
       <button type="button" class="btn btn-sm" id="btChannelCodeApply">Use code</button>
     </div>
-    <div class="pick-item warn">Same code on both phones. WiFi optional — mobile data is enough to find channels.</div>`;
+    <div class="pick-item warn">Offline: same code on both phones + Bluetooth below.</div>`;
+  } else {
+    html += '<div class="pick-item warn">Online (net on): WiFi not needed. Channel menu is enough. Bluetooth headset is optional.</div>';
+  }
   const audioActive = btAudioReady ? " active" : "";
   html += `<div class="pick-item pick-item-primary${audioActive}" data-bt-audio="1"><strong>Bluetooth mic / headset</strong><span class="pick-item-sub">Pair BT in phone Settings, then tap here (recommended)</span></div>`;
 
@@ -2719,7 +2748,15 @@ async function startTalk(e) {
     if (el) el.innerHTML = `<span class="accent">Live · ${escapeHtml(ch)}</span>`;
     return;
   }
-  if (!isBluetoothReady()) {
+  if (!isOfflineWalkieReady()) {
+    openMenu();
+    toggleBluetoothMenu(true);
+    alert("Offline mode — Bluetooth required. Connect Bluetooth mic or No internet setup below.");
+    return;
+  }
+  if (!isBluetoothReady() && window.offlineTalk?.isActive?.()) {
+    /* offline WebRTC path handles transmit */
+  } else if (!isBluetoothReady()) {
     openMenu();
     toggleBluetoothMenu(true);
     return;
