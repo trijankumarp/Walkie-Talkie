@@ -1,3 +1,5 @@
+node_modules/
+
 # Firebase secrets (use firebase-config.example.js in repo)
 firebase-config.js
 .env
