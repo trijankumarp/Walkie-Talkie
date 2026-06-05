@@ -2,47 +2,87 @@
 
 Offline-friendly team walkie PWA with **real Firebase login** (email + Google).
 
-## Setup Firebase (required for login)
+**Firebase project:** `walkietalkie-mos` (walkie talkie)
 
-1. Go to [Firebase Console](https://console.firebase.google.com/) → **Create project** (or use existing).
-2. **Build → Authentication → Get started**
-   - Enable **Email/Password**
-   - Enable **Google** (add support email when asked)
-3. **Project settings → Your apps → Web** (`</>`) → Register app → copy config.
-4. In this folder:
-   ```bash
+---
+
+## 1. Firebase setup
+
+1. [Firebase Console](https://console.firebase.google.com/) → project **walkie talkie**
+2. **Build → Authentication** → enable **Email/Password** + **Google**
+3. **Project settings → Your apps → Web** (`</>`) → register app → copy `firebaseConfig`
+4. Local dev:
+   ```powershell
    copy firebase-config.example.js firebase-config.js
    ```
-   Paste your real keys into `firebase-config.js`.
-5. **Authentication → Settings → Authorized domains** — add:
+   Paste `apiKey`, `messagingSenderId`, `appId` from console.
+5. **Authentication → Settings → Authorized domains** → add:
    - `localhost`
-   - Your GitHub Pages domain (e.g. `trijankumarp.github.io`) if you deploy there.
+   - `walkietalkie-mos.firebaseapp.com` (usually auto)
+   - Your **Vercel** domain, e.g. `mos-walkie.vercel.app`
+   - `*.vercel.app` is not allowed — add each deployment URL you use
 
-## Run locally
+---
 
-```bash
-python -m http.server 8080
+## 2. GitHub
+
+```powershell
+cd C:\Users\trija\Desktop\Work\VS\Walkie
+gh auth login
+gh repo create Walkie --public --source=. --remote=origin --push
 ```
 
-Open: http://localhost:8080/walkie.html
+If repo already exists:
 
-## Push to GitHub
-
-```bash
-git init
-git add .
-git commit -m "M-OS Walkie with Firebase auth"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/Walkie.git
+```powershell
+git remote add origin https://github.com/trijankumarp/Walkie.git
 git push -u origin main
 ```
 
-`firebase-config.js` is gitignored — never commit API keys.
+`firebase-config.js` and `.env` are **not** pushed (secrets stay local / in Vercel).
 
-## GitHub Pages (optional)
+---
 
-Repo → **Settings → Pages** → Source: `main` branch → folder `/ (root)` → Save.
+## 3. Vercel (deploy from GitHub)
 
-Use URL: `https://YOUR_USERNAME.github.io/Walkie/walkie.html`
+1. Go to [vercel.com](https://vercel.com) → **Add New Project**
+2. **Import** your GitHub repo `Walkie`
+3. Framework: **Other** (static site)
+4. **Environment Variables** (from Firebase web app config):
 
-Add that domain in Firebase **Authorized domains**.
+   | Name | Example |
+   |------|---------|
+   | `FIREBASE_API_KEY` | from Firebase console |
+   | `FIREBASE_AUTH_DOMAIN` | `walkietalkie-mos.firebaseapp.com` |
+   | `FIREBASE_PROJECT_ID` | `walkietalkie-mos` |
+   | `FIREBASE_STORAGE_BUCKET` | `walkietalkie-mos.firebasestorage.app` |
+   | `FIREBASE_MESSAGING_SENDER_ID` | from Firebase console |
+   | `FIREBASE_APP_ID` | from Firebase console |
+
+5. **Deploy** → open `https://your-project.vercel.app`
+6. Copy that URL → Firebase **Authorized domains** → add it
+7. Every git push to `main` auto-redeploys on Vercel
+
+---
+
+## Run locally
+
+```powershell
+copy firebase-config.example.js firebase-config.js
+# paste keys, then:
+python -m http.server 8080
+```
+
+Open: http://localhost:8080/
+
+---
+
+## Project structure
+
+| File | Purpose |
+|------|---------|
+| `walkie.html` | Main app |
+| `auth.js` | Firebase login |
+| `vercel.json` | Vercel build + routing |
+| `scripts/generate-firebase-config.js` | Builds config from env on Vercel |
+| `.env.example` | Env var template |

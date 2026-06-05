@@ -1,0 +1,8 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": ".",
+  "installCommand": "echo dependencies-none",
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" }
+  ]
+}
