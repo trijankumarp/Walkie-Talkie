@@ -27,15 +27,15 @@ Offline-friendly team walkie PWA with **real Firebase login** (email + Google).
 ## 2. GitHub
 
 ```powershell
-cd C:\Users\trija\Desktop\Work\VS\Walkie
+cd "C:\Users\trija\Desktop\Work\VS\Walkie Talkie"
 gh auth login
-gh repo create Walkie --public --source=. --remote=origin --push
+gh repo create Walkie-Talkie --public --source=. --remote=origin --push
 ```
 
 If repo already exists:
 
 ```powershell
-git remote add origin https://github.com/trijankumarp/Walkie.git
+git remote add origin https://github.com/trijankumarp/Walkie-Talkie.git
 git push -u origin main
 ```
 
@@ -46,7 +46,7 @@ git push -u origin main
 ## 3. Vercel (deploy from GitHub)
 
 1. Go to [vercel.com](https://vercel.com) → **Add New Project**
-2. **Import** your GitHub repo `Walkie`
+2. **Import** your GitHub repo `Walkie-Talkie`
 3. Framework: **Other** (static site)
 4. **Environment Variables** (from Firebase web app config):
 
