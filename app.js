@@ -3,6 +3,7 @@ const THEME_KEY = "walkie_theme_v1";
 const BT_DEVICES_KEY = "walkie_bt_devices_v1";
 const WIFI_SEL_KEY = "walkie_wifi_selected_v1";
 const PROFILE_MOBILE_KEY = "walkie_profile_mobile_v1";
+const PROFILE_NAMES_KEY = "walkie_profile_names_v1";
 const PROFILE_AVATAR_KEY = "walkie_avatar_v1";
 const PROFILE_COUNTRY_KEY = "walkie_country_v1";
 const BIOMETRIC_KEY = "walkie_biometric_v1";
@@ -157,7 +158,10 @@ function toggleSettingsPanel() {
   settingsPanelOpen = !settingsPanelOpen;
   document.getElementById("btnSettingsAction")?.classList.toggle("selected", settingsPanelOpen);
   document.getElementById("settingsPanel")?.classList.toggle("open", settingsPanelOpen);
-  if (settingsPanelOpen) fillProfileForm();
+  if (settingsPanelOpen) {
+    fillProfileForm();
+    renderAppPermissions();
+  }
 }
 
 function getInitials(name) {
@@ -194,7 +198,7 @@ function applyAvatarToElement(el, avatar, name) {
 
 function updateMenuAvatar() {
   const av = getStoredAvatar();
-  const name = loggedInUser?.name || "User";
+  const name = getFullName(loggedInUser) || "User";
   applyAvatarToElement(document.getElementById("menuAvatar"), av, name);
   applyAvatarToElement(document.getElementById("settingsAvatarPreview"), av, name);
   const nameEl = document.getElementById("menuUserName");
@@ -261,8 +265,8 @@ function initAvatarPickers() {
   document.getElementById("avatarCameraInput")?.addEventListener("change", onFile);
 }
 
-function initCountrySelect() {
-  const sel = document.getElementById("profileCountry");
+function fillCountrySelect(selectId) {
+  const sel = document.getElementById(selectId);
   if (!sel || sel.options.length) return;
   COUNTRY_CODES.forEach((c) => {
     const opt = document.createElement("option");
@@ -271,6 +275,173 @@ function initCountrySelect() {
     opt.title = c.country;
     sel.appendChild(opt);
   });
+}
+
+function initCountrySelect() {
+  fillCountrySelect("profileCountry");
+  fillCountrySelect("signupCountry");
+}
+
+function saveUserNames(uid, firstName, lastName) {
+  localStorage.setItem(
+    `${PROFILE_NAMES_KEY}_${uid}`,
+    JSON.stringify({ firstName, lastName, accountType: "individual" })
+  );
+}
+
+function loadUserNames(uid) {
+  try {
+    const raw = localStorage.getItem(`${PROFILE_NAMES_KEY}_${uid}`);
+    if (raw) {
+      const data = JSON.parse(raw);
+      return {
+        firstName: data.firstName || "",
+        lastName: data.lastName || "",
+        accountType: data.accountType || "individual"
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { firstName: "", lastName: "", accountType: "individual" };
+}
+
+function parseNameParts(displayName) {
+  const parts = (displayName || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
+
+function getFullName(user) {
+  if (!user) return "";
+  const names = loadUserNames(user.uid);
+  const full = `${names.firstName} ${names.lastName}`.trim();
+  if (full) return full;
+  return user.name || "";
+}
+
+function saveMobileProfile(uid, country, number, verified = false) {
+  localStorage.setItem(
+    `${PROFILE_MOBILE_KEY}_${uid}`,
+    JSON.stringify({ country, number, verified })
+  );
+  localStorage.setItem(`${PROFILE_COUNTRY_KEY}_${uid}`, country);
+}
+
+function updateEmailVerifiedBadge() {
+  const badge = document.getElementById("emailVerifiedBadge");
+  const display = document.getElementById("profileEmailDisplay");
+  const resendBtn = document.getElementById("btnResendVerify");
+  if (display && loggedInUser?.email) display.textContent = loggedInUser.email;
+  const verified =
+    loggedInUser?.emailVerified ?? window.mosAuth?.isEmailVerified?.() ?? false;
+  if (loggedInUser) loggedInUser.emailVerified = verified;
+  if (!badge) return;
+  if (verified) {
+    badge.classList.remove("no");
+    badge.title = "Email verified";
+    if (resendBtn) resendBtn.style.display = "none";
+  } else {
+    badge.classList.add("no");
+    badge.title = "Email not verified — check inbox";
+    if (resendBtn) resendBtn.style.display = "block";
+  }
+}
+
+async function resendEmailVerification() {
+  try {
+    await window.mosAuth.sendUserEmailVerification();
+    setProfileMsg("Verification email sent. Check inbox.");
+  } catch (err) {
+    setProfileMsg(window.mosAuth.mapError(err), true);
+  }
+}
+
+const APP_PERMISSIONS = [
+  { id: "mic", label: "Microphone", key: "microphone", forPTT: true },
+  { id: "cam", label: "Camera", key: "camera" },
+  { id: "notif", label: "Notifications", key: "notifications" },
+  { id: "bt", label: "Bluetooth", key: "bluetooth" }
+];
+
+async function queryPermissionState(key) {
+  if (key === "notifications") {
+    return Notification.permission || "default";
+  }
+  if (!navigator.permissions?.query) {
+    if (key === "bluetooth") return navigator.bluetooth ? "prompt" : "unsupported";
+    return "unsupported";
+  }
+  try {
+    const status = await navigator.permissions.query({ name: key });
+    return status.state;
+  } catch {
+    if (key === "bluetooth") return navigator.bluetooth ? "prompt" : "unsupported";
+    return "unsupported";
+  }
+}
+
+async function requestAppPermission(key) {
+  if (key === "notifications") {
+    if (!("Notification" in window)) return "unsupported";
+    return await Notification.requestPermission();
+  }
+  if (key === "microphone") {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+      return "granted";
+    } catch {
+      return "denied";
+    }
+  }
+  if (key === "camera") {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach((t) => t.stop());
+      return "granted";
+    } catch {
+      return "denied";
+    }
+  }
+  if (key === "bluetooth") {
+    return navigator.bluetooth ? "prompt" : "unsupported";
+  }
+  return "unsupported";
+}
+
+async function renderAppPermissions() {
+  const list = document.getElementById("permissionsList");
+  if (!list) return;
+  list.innerHTML = "";
+
+  for (const perm of APP_PERMISSIONS) {
+    const state = await queryPermissionState(perm.key);
+    const row = document.createElement("div");
+    row.className = "perm-row";
+    const granted = state === "granted" || state === "prompt";
+    row.innerHTML = `
+      <span>${perm.label}</span>
+      <span class="perm-status${granted ? " granted" : ""}">${state}</span>
+    `;
+    if (state !== "granted" && state !== "unsupported") {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "Allow";
+      btn.onclick = async () => {
+        await requestAppPermission(perm.key);
+        renderAppPermissions();
+      };
+      row.appendChild(btn);
+    }
+    list.appendChild(row);
+  }
+}
+
+function refreshAppPermissions() {
+  renderAppPermissions();
+  setProfileMsg("Permissions updated.");
 }
 
 function onBiometricToggle(enabled) {
@@ -389,16 +560,25 @@ function fillProfileForm() {
   initAvatarPickers();
   updateMenuAvatar();
 
-  const name = document.getElementById("profileName");
+  const first = document.getElementById("profileFirstName");
+  const last = document.getElementById("profileLastName");
   const email = document.getElementById("profileEmail");
   const mobile = document.getElementById("profileMobile");
   const country = document.getElementById("profileCountry");
   const bio = document.getElementById("profileBiometric");
-
-  if (name) name.value = loggedInUser.name || "";
-  if (email) email.value = loggedInUser.email || "";
-
   const uid = getProfileUid();
+  const names = loadUserNames(uid);
+  if (!names.firstName && !names.lastName && loggedInUser.name) {
+    const parsed = parseNameParts(loggedInUser.name);
+    names.firstName = parsed.firstName;
+    names.lastName = parsed.lastName;
+  }
+
+  if (first) first.value = names.firstName || "";
+  if (last) last.value = names.lastName || "";
+  if (email) email.value = "";
+  updateEmailVerifiedBadge();
+
   if (mobile && country) {
     const raw = localStorage.getItem(`${PROFILE_MOBILE_KEY}_${uid}`);
     let parsed = { country: "+91", number: "" };
@@ -563,13 +743,28 @@ function refreshStatusBar() {
     : `${loggedInUser.name} · <span style="color:var(--text-faint)">Select a team in menu</span>`;
 }
 
+function buildLoggedInUser(user) {
+  const uid = user.uid;
+  let names = loadUserNames(uid);
+  const display = user.displayName || user.name || "";
+  if (!names.firstName && !names.lastName && display) {
+    names = { ...parseNameParts(display), accountType: "individual" };
+    saveUserNames(uid, names.firstName, names.lastName);
+  }
+  const fullName = `${names.firstName} ${names.lastName}`.trim() || display || (user.email || "").split("@")[0];
+  return {
+    uid,
+    firstName: names.firstName,
+    lastName: names.lastName,
+    name: fullName,
+    email: user.email,
+    emailVerified: !!user.emailVerified
+  };
+}
+
 function enterApp(user) {
   isLoggedIn = true;
-  loggedInUser = {
-    uid: user.uid,
-    name: user.name || user.displayName || (user.email || "").split("@")[0],
-    email: user.email
-  };
+  loggedInUser = buildLoggedInUser(user);
   loadChannels();
   loadFriends();
   loadBtDevices();
@@ -588,22 +783,37 @@ window.onFirebaseUser = function (firebaseUser) {
   if (!firebaseUser || isLoggedIn) return;
   enterApp({
     uid: firebaseUser.uid,
-    name: firebaseUser.displayName || firebaseUser.email.split("@")[0],
-    email: firebaseUser.email
+    displayName: firebaseUser.displayName,
+    email: firebaseUser.email,
+    emailVerified: firebaseUser.emailVerified
   });
 };
 
+function getSignupE164() {
+  const country = document.getElementById("signupCountry")?.value || "+91";
+  const number = document.getElementById("signupMobile")?.value.trim().replace(/\D/g, "");
+  if (!number) return "";
+  return `${country}${number.replace(/^0+/, "")}`;
+}
+
 async function signup() {
   if (!requireFirebase()) return;
-  const name = document.getElementById("signupName").value.trim();
+  const firstName = document.getElementById("signupFirstName")?.value.trim();
+  const lastName = document.getElementById("signupLastName")?.value.trim();
   const email = document.getElementById("signupEmail").value.trim().toLowerCase();
+  const country = document.getElementById("signupCountry")?.value || "+91";
+  const mobile = document.getElementById("signupMobile")?.value.trim().replace(/\D/g, "");
   const password = document.getElementById("signupPassword").value;
   const confirm = document.getElementById("signupConfirm").value;
 
-  if (!name) return setAuthError("Please enter your full name.");
+  if (!firstName) return setAuthError("Please enter first name.", ["signupFirstName"]);
+  if (!lastName) return setAuthError("Please enter last name.", ["signupLastName"]);
   if (!email) return setAuthError("Please enter Gmail or email address.", ["signupEmail"]);
   if (!isValidEmail(email))
     return setAuthError("Wrong email format. Use you@gmail.com", ["signupEmail"]);
+  if (!mobile || mobile.length < 8) {
+    return setAuthError("Please enter a valid mobile number.", ["signupMobile"]);
+  }
   if (password.length < 6) return setAuthError("Password must be at least 6 characters.", ["signupPassword"]);
   if (password !== confirm)
     return setAuthError("Passwords do not match.", ["signupPassword", "signupConfirm"]);
@@ -611,8 +821,10 @@ async function signup() {
   setAuthLoading(true);
   setAuthError("", []);
   try {
-    await window.mosAuth.signupEmail(name, email, password);
-    alert("Account created successfully!");
+    const user = await window.mosAuth.signupEmail(firstName, lastName, email, password);
+    saveUserNames(user.uid, firstName, lastName);
+    saveMobileProfile(user.uid, country, mobile, false);
+    alert("Account created! Check your email to verify (✓ will show in Settings).");
     showAuthTab("login");
     document.getElementById("loginEmail").value = email;
   } catch (err) {
@@ -639,10 +851,12 @@ async function login() {
   setAuthError("", []);
   try {
     const user = await window.mosAuth.loginEmail(email, password);
+    await user.reload?.();
     enterApp({
       uid: user.uid,
-      name: user.displayName || user.email.split("@")[0],
-      email: user.email
+      displayName: user.displayName,
+      email: user.email,
+      emailVerified: user.emailVerified
     });
   } catch (err) {
     const msg = window.mosAuth.mapError(err);
@@ -668,8 +882,9 @@ async function loginWithGoogle() {
     const user = await window.mosAuth.loginGoogle();
     enterApp({
       uid: user.uid,
-      name: user.displayName || user.email.split("@")[0],
-      email: user.email
+      displayName: user.displayName,
+      email: user.email,
+      emailVerified: user.emailVerified
     });
   } catch (err) {
     setAuthError(window.mosAuth.mapError(err), []);
@@ -983,11 +1198,17 @@ async function refreshWifiList() {
 }
 
 async function saveProfileName() {
-  const name = document.getElementById("profileName")?.value.trim();
-  if (!name) return setProfileMsg("Enter your name.", true);
+  const firstName = document.getElementById("profileFirstName")?.value.trim();
+  const lastName = document.getElementById("profileLastName")?.value.trim();
+  if (!firstName) return setProfileMsg("Enter first name.", true);
+  if (!lastName) return setProfileMsg("Enter last name.", true);
+  const fullName = `${firstName} ${lastName}`.trim();
   try {
-    await window.mosAuth.updateDisplayName(name);
-    loggedInUser.name = name;
+    await window.mosAuth.updateDisplayName(fullName);
+    saveUserNames(getProfileUid(), firstName, lastName);
+    loggedInUser.firstName = firstName;
+    loggedInUser.lastName = lastName;
+    loggedInUser.name = fullName;
     refreshStatusBar();
     updateMenuAvatar();
     setProfileMsg("Name updated.");
@@ -1036,9 +1257,11 @@ async function confirmEmailChange() {
   try {
     await window.mosAuth.confirmEmailChangeOtp(email, otp, pass);
     loggedInUser.email = email;
+    loggedInUser.emailVerified = true;
     document.getElementById("profileEmailOtp").value = "";
     showOtpBox("emailOtpBox", false);
     refreshStatusBar();
+    updateEmailVerifiedBadge();
     setProfileMsg("Email verified and updated.");
   } catch (err) {
     setProfileMsg(window.mosAuth.mapError(err), true);
@@ -1089,11 +1312,7 @@ async function confirmMobileChange() {
   try {
     await window.mosAuth.reauthWithPassword(pass);
     await window.mosAuth.confirmPhoneOtp(otp, e164);
-    localStorage.setItem(
-      `${PROFILE_MOBILE_KEY}_${uid}`,
-      JSON.stringify({ country, number, e164, verified: true })
-    );
-    localStorage.setItem(`${PROFILE_COUNTRY_KEY}_${uid}`, country);
+    saveMobileProfile(uid, country, number, true);
     document.getElementById("profileMobileOtp").value = "";
     showOtpBox("mobileOtpBox", false);
     setProfileMsg(`Mobile verified: ${country} ${number}`);
@@ -1214,6 +1433,8 @@ Object.assign(window, {
   toggleTeamPanel,
   toggleFriendPanel,
   toggleSettingsPanel,
+  refreshAppPermissions,
+  resendEmailVerification,
   setupBiometric,
   onBiometricToggle,
   addFriend,

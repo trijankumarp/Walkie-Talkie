@@ -540,6 +540,80 @@
     }
     .otp-hint { font-size: 11px; color: var(--text-faint); margin: 6px 0 0; line-height: 1.4; }
     #recaptcha-container { min-height: 1px; }
+    .name-row { display: flex; gap: 8px; margin: 6px 0 10px; }
+    .name-row input { flex: 1; margin: 0; }
+    .account-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: var(--accent-soft);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .email-display-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 6px 0 12px;
+      font-size: 14px;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .verified-badge {
+      flex-shrink: 0;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #16a34a;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .verified-badge.no {
+      background: var(--text-faint);
+    }
+    .perm-list { margin: 8px 0 14px; }
+    .perm-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin: 6px 0;
+      font-size: 13px;
+    }
+    .perm-row span { color: var(--text); font-weight: 500; }
+    .perm-status {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: capitalize;
+    }
+    .perm-status.granted { color: #16a34a; }
+    .perm-row button {
+      padding: 6px 10px;
+      font-size: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-card);
+      color: var(--text);
+      cursor: pointer;
+    }
     .menu-close {
       width: 36px;
       height: 36px;
@@ -834,12 +908,19 @@
       <!-- Sign Up -->
       <div id="panelSignup" class="auth-panel">
         <h2 class="panel-title">Sign Up</h2>
-        <label class="field-label" for="signupName">Full Name</label>
-        <input type="text" id="signupName" placeholder="Your name" autocomplete="name">
+        <span class="account-badge">Individual account</span>
+        <label class="field-label">Name</label>
+        <div class="name-row">
+          <input type="text" id="signupFirstName" placeholder="First name" autocomplete="given-name">
+          <input type="text" id="signupLastName" placeholder="Last name" autocomplete="family-name">
+        </div>
         <label class="field-label" for="signupEmail">Gmail / Email Address</label>
         <input type="email" id="signupEmail" placeholder="you@gmail.com" autocomplete="email">
-        <label class="field-label" for="signupMobile">Mobile (optional)</label>
-        <input type="tel" id="signupMobile" placeholder="10-digit mobile number" autocomplete="tel">
+        <label class="field-label">Mobile number</label>
+        <div class="phone-row">
+          <select id="signupCountry" aria-label="Country code"></select>
+          <input type="tel" id="signupMobile" placeholder="Phone number" autocomplete="tel">
+        </div>
         <label class="field-label" for="signupPassword">Password</label>
         <input type="password" id="signupPassword" placeholder="Min 6 characters" autocomplete="new-password">
         <label class="field-label" for="signupConfirm">Confirm Password</label>
@@ -929,11 +1010,22 @@
         <p class="field-label" style="margin-top:4px;">Or pick emoji</p>
         <div class="emoji-grid" id="emojiGrid"></div>
 
-        <label class="field-label profile-field" for="profileName">Name</label>
-        <input type="text" id="profileName" placeholder="Your name" autocomplete="name">
+        <span class="account-badge">Individual</span>
+        <label class="field-label">Name</label>
+        <div class="name-row">
+          <input type="text" id="profileFirstName" placeholder="First name" autocomplete="given-name">
+          <input type="text" id="profileLastName" placeholder="Last name" autocomplete="family-name">
+        </div>
         <button type="button" class="btn btn-sm" onclick="saveProfileName()">Save name</button>
 
-        <label class="field-label profile-field" for="profileEmail">New email</label>
+        <label class="field-label profile-field">Email</label>
+        <div class="email-display-row">
+          <span id="profileEmailDisplay" style="flex:1;">—</span>
+          <span id="emailVerifiedBadge" class="verified-badge no" title="Not verified">✓</span>
+        </div>
+        <button type="button" class="btn btn-sm" id="btnResendVerify" style="display:none;" onclick="resendEmailVerification()">Resend verification email</button>
+
+        <label class="field-label profile-field" for="profileEmail">Change email</label>
         <input type="email" id="profileEmail" placeholder="New email address" autocomplete="email">
         <button type="button" class="btn btn-sm" onclick="sendEmailChangeOtp()">Send verification code</button>
         <div id="emailOtpBox" class="otp-box">
@@ -956,6 +1048,10 @@
           <button type="button" class="btn btn-sm" onclick="confirmMobileChange()">Verify & save mobile</button>
           <p class="otp-hint">SMS OTP (Firebase Phone Auth). Password required before send.</p>
         </div>
+
+        <p class="field-label profile-field">App permissions</p>
+        <div id="permissionsList" class="perm-list"></div>
+        <button type="button" class="btn btn-sm" onclick="refreshAppPermissions()">Refresh permissions</button>
 
         <div class="bio-row">
           <span>Biometric login</span>

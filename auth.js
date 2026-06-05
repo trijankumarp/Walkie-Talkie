@@ -8,6 +8,7 @@ import {
   updateProfile,
   updateEmail,
   updatePassword,
+  sendEmailVerification,
   verifyBeforeUpdateEmail,
   reauthenticateWithCredential,
   EmailAuthProvider,
@@ -93,11 +94,26 @@ async function loginEmail(email, password) {
   return result.user;
 }
 
-async function signupEmail(name, email, password) {
+async function signupEmail(firstName, lastName, email, password) {
   if (!auth) throw new Error("Firebase not configured.");
+  const displayName = `${firstName} ${lastName}`.trim();
   const result = await createUserWithEmailAndPassword(auth, email, password);
-  await updateProfile(result.user, { displayName: name });
+  await updateProfile(result.user, { displayName });
+  try {
+    await sendEmailVerification(result.user);
+  } catch {
+    /* optional */
+  }
   return result.user;
+}
+
+async function sendUserEmailVerification() {
+  if (!auth?.currentUser) throw new Error("Not signed in.");
+  await sendEmailVerification(auth.currentUser);
+}
+
+function isEmailVerified() {
+  return !!auth?.currentUser?.emailVerified;
 }
 
 async function loginGoogle() {
@@ -263,6 +279,8 @@ window.mosAuth = {
   mapError,
   loginEmail,
   signupEmail,
+  sendUserEmailVerification,
+  isEmailVerified,
   loginGoogle,
   logout,
   getCurrentUser,
