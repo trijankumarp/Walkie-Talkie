@@ -113,12 +113,19 @@ function setAuthError(msg, fieldIds = []) {
   if (fieldIds.length) setFieldError(...fieldIds);
   const el = document.getElementById("authError");
   if (!el) return;
-  if (msg && msg.includes("Authentication is not enabled")) {
+  const text = (msg || "").trim();
+  if (!text) {
+    el.innerHTML = "";
+    el.classList.remove("show");
+    return;
+  }
+  el.classList.add("show");
+  if (text.includes("Authentication is not enabled")) {
     el.innerHTML =
-      msg +
+      text +
       '<br><a href="https://console.firebase.google.com/project/walkietalkie-mos/authentication" target="_blank" rel="noopener" style="color:var(--text);margin-top:8px;display:inline-block;">Open Firebase Authentication →</a>';
   } else {
-    el.textContent = msg || "";
+    el.textContent = text;
   }
 }
 

@@ -563,15 +563,21 @@
     }
     .auth-hint { font-size: 12px; color: var(--text-faint); text-align: center; margin-top: 8px; }
     .auth-error {
+      display: none;
       color: var(--red);
       background: var(--red-bg);
-      border: 1px solid #fecaca;
+      border: 1px solid var(--border);
       border-radius: 8px;
       padding: 10px 12px;
       font-size: 13px;
       text-align: center;
       margin: 8px 0;
-      min-height: 18px;
+    }
+    .auth-error.show {
+      display: block;
+    }
+    html[data-theme="dark"] .auth-error.show {
+      border-color: #525252;
     }
     .btn-google {
       background: var(--bg-card);
