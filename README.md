@@ -82,8 +82,9 @@ Open: http://localhost:8080/
 
 | File | Purpose |
 |------|---------|
-| `walkie.html` | Main app |
-| `auth.js` | Firebase login |
+| `walkie.html` | Main app UI |
+| `auth.js` | Firebase v12 modular SDK (CDN modules) |
+| `app.js` | App logic + login handlers |
 | `vercel.json` | Vercel build + routing |
 | `scripts/generate-firebase-config.js` | Builds config from env on Vercel |
 | `.env.example` | Env var template |
