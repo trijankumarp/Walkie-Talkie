@@ -249,7 +249,7 @@ function renderSettingsList() {
   const fullName =
     `${normalized.firstName} ${normalized.lastName}`.trim() || loggedInUser.name || "Not set";
 
-  applyAvatarToElement(document.getElementById("settingsListAvatar"), getStoredAvatar(), fullName);
+  syncAllProfileAvatars();
 
   const setVal = (id, text) => {
     const el = document.getElementById(id);
@@ -297,8 +297,6 @@ function renderSettingsList() {
 
   const bioOn = localStorage.getItem(`${BIOMETRIC_KEY}_${uid}`) === "1";
   setVal("settingsBioValue", bioOn ? "On" : "Off");
-
-  updateMenuAvatar();
 }
 
 function stripSpacesFromFirstName(value) {
@@ -407,6 +405,7 @@ function toggleSettingsEditor(key) {
       mount.appendChild(grid);
       grid.style.display = "none";
     }
+    syncAllProfileAvatars();
   }
   requestAnimationFrame(() => {
     expand.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -427,7 +426,7 @@ function buildSettingsEditorHtml(key) {
   const editors = {
     photo: `
       <div class="profile-avatar-row" style="justify-content:center;margin-bottom:16px;">
-        <div class="settings-row-avatar" id="settingsAvatarPreview" style="width:80px;height:80px;font-size:28px;">?</div>
+        <div class="profile-avatar profile-avatar--lg" id="settingsAvatarPreview">?</div>
       </div>
       <div class="action-grid" style="grid-template-columns:repeat(3,1fr);">
         <button type="button" class="action-btn" onclick="pickAvatarGallery()">
@@ -608,26 +607,31 @@ function getStoredAvatar() {
 function applyAvatarToElement(el, avatar, name) {
   if (!el) return;
   el.style.backgroundImage = "";
-  el.classList.remove("emoji");
+  el.classList.remove("emoji", "has-photo");
   if (avatar?.startsWith("emoji:")) {
     el.textContent = avatar.slice(6);
     el.classList.add("emoji");
   } else if (avatar?.startsWith("data:image")) {
     el.style.backgroundImage = `url(${avatar})`;
     el.textContent = "";
+    el.classList.add("has-photo");
   } else {
     el.textContent = getInitials(name);
   }
 }
 
-function updateMenuAvatar() {
+function syncAllProfileAvatars() {
   const av = getStoredAvatar();
   const name = getFullName(loggedInUser) || "User";
-  applyAvatarToElement(document.getElementById("menuAvatar"), av, name);
-  applyAvatarToElement(document.getElementById("settingsListAvatar"), av, name);
-  applyAvatarToElement(document.getElementById("settingsAvatarPreview"), av, name);
+  ["menuAvatar", "settingsListAvatar", "settingsAvatarPreview"].forEach((id) => {
+    applyAvatarToElement(document.getElementById(id), av, name);
+  });
+}
+
+function updateMenuAvatar() {
+  syncAllProfileAvatars();
   const nameEl = document.getElementById("menuUserName");
-  if (nameEl) nameEl.textContent = name;
+  if (nameEl) nameEl.textContent = getFullName(loggedInUser) || "User";
 }
 
 function saveAvatar(data) {
@@ -668,7 +672,6 @@ function initAvatarPickers() {
       b.textContent = em;
       b.onclick = () => {
         saveAvatar(`emoji:${em}`);
-        renderSettingsList();
         setProfileMsg("Profile picture updated.");
       };
       grid.appendChild(b);
@@ -682,7 +685,6 @@ function initAvatarPickers() {
     try {
       const dataUrl = await resizeImageFile(file, 256, 0.82);
       saveAvatar(dataUrl);
-      renderSettingsList();
       setProfileMsg("Photo saved.");
     } catch {
       setProfileMsg("Could not load image.", true);
