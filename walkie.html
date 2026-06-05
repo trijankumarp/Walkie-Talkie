@@ -964,6 +964,19 @@
       color: var(--text-muted);
       margin-top: 4px;
     }
+    .bt-code-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .bt-code-input {
+      flex: 1;
+      margin: 0;
+      padding: 10px 12px;
+      font-size: 14px;
+    }
 
     .profile-msg {
       font-size: 12px;
@@ -1409,7 +1422,7 @@
       </button>
       <div id="btPanel" class="menu-panel">
         <div class="help-box" style="margin-bottom:8px;">
-          <strong>Step 1 — Bluetooth</strong> — pair headset/speaker in phone Settings, then tap <strong>Bluetooth mic / headset</strong> below. Then pick a Channel and Hold to talk.
+          <strong>Bluetooth only (no WiFi)</strong> — set the same <strong>Walkie code</strong> on both phones, tap <strong>Bluetooth mic / headset</strong>, then Channel → Hold to talk. Needs mobile data (not WiFi). Two phones talking with zero internet needs a native app (coming later).
         </div>
         <div id="btStatus" class="conn-line disconnected">Not connected</div>
         <div class="pick-list" id="btList"></div>

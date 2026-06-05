@@ -27,6 +27,7 @@ const PASSWORD_CHANGED_KEY = "walkie_password_changed_v1";
 const BIOMETRIC_KEY = "walkie_biometric_v1";
 const FRIENDS_KEY = "walkie_friends_v1";
 const BT_INTRO_KEY = "walkie_bt_intro_v1";
+const BT_CHANNEL_CODE_KEY = "walkie_bt_channel_code_v1";
 
 const GENDER_OPTIONS = [
   { value: "", label: "Not set" },
@@ -80,6 +81,7 @@ let channels = [];
 let bleDevice = null;
 let btAudioReady = false;
 let btAudioDeviceLabel = null;
+let btChannelCode = null;
 let pttMediaStream = null;
 let pttAudioContext = null;
 let loggedInUser = null;
@@ -1509,7 +1511,7 @@ async function enterApp(user) {
   updatePttHint();
   updateMenuAvatar();
   renderSettingsList();
-  ensureWifiForDiscovery();
+  if (!btChannelCode) ensureWifiForDiscovery();
   if (selectedWifiName) setWifiStatus(true, selectedWifiName);
   renderBluetoothList();
   startChannelWifiSync();
@@ -1648,7 +1650,26 @@ function getChannelSearchQuery() {
   return (document.getElementById("channelSearch")?.value || "").trim().toLowerCase();
 }
 
+function loadBtChannelCode() {
+  btChannelCode = localStorage.getItem(BT_CHANNEL_CODE_KEY) || null;
+}
+
+function applyBtChannelCode() {
+  const raw = document.getElementById("btChannelCodeInput")?.value?.trim().toLowerCase();
+  if (!raw || raw.length < 3) {
+    alert("Enter the same code on both phones (example: 1234).");
+    return;
+  }
+  btChannelCode = raw.replace(/\s+/g, "");
+  localStorage.setItem(BT_CHANNEL_CODE_KEY, btChannelCode);
+  publishAllChannelsToWifi();
+  refreshNearbyChannels();
+  renderBluetoothList();
+  if (channelPanelOpen) renderChannels();
+}
+
 function getWifiDiscoveryKey() {
+  if (btChannelCode) return `bt-${btChannelCode}`;
   if (!selectedWifiName) return null;
   const n = selectedWifiName.trim();
   if (!n) return null;
@@ -1757,7 +1778,7 @@ async function publishAllChannelsToWifi() {
 }
 
 function ensureWifiForDiscovery() {
-  if (selectedWifiName) return;
+  if (btChannelCode || selectedWifiName) return;
   selectedWifiName = "channel-wifi";
   localStorage.setItem(WIFI_SEL_KEY, "channel-wifi");
   setWifiStatus(true, "Same WiFi as channel");
@@ -2025,7 +2046,7 @@ function renderChannels() {
   if (!wifiKey) {
     appendChannelEmpty(
       container,
-      "Open <strong>WiFi</strong> in menu and select your network (or “Same WiFi as channel”) to find channels nearby."
+      "Open <strong>Bluetooth</strong> → set the same <strong>Walkie code</strong> on both phones (WiFi not required). Or use WiFi menu later."
     );
   } else if (nearbyLoading) {
     appendChannelEmpty(container, "Searching channels on your WiFi…");
@@ -2050,7 +2071,7 @@ function renderChannels() {
   }
 
   if (nearbyVisible.length) {
-    appendChannelSectionLabel(container, "On same WiFi");
+    appendChannelSectionLabel(container, btChannelCode ? "Same Bluetooth code" : "On same WiFi");
     nearbyVisible.forEach((ch) => renderNearbyChannelItem(container, ch));
   }
 
@@ -2162,6 +2183,13 @@ function renderBluetoothList() {
   if (!list) return;
 
   let html = "";
+  const codeVal = btChannelCode || "";
+  html += `
+    <div class="bt-code-row">
+      <input type="text" id="btChannelCodeInput" class="bt-code-input" placeholder="Walkie code (e.g. 1234)" maxlength="12" value="${escapeHtml(codeVal)}" autocomplete="off">
+      <button type="button" class="btn btn-sm" id="btChannelCodeApply">Use code</button>
+    </div>
+    <div class="pick-item warn">Same code on both phones. WiFi optional — mobile data is enough to find channels.</div>`;
   const audioActive = btAudioReady ? " active" : "";
   html += `<div class="pick-item pick-item-primary${audioActive}" data-bt-audio="1"><strong>Bluetooth mic / headset</strong><span class="pick-item-sub">Pair BT in phone Settings, then tap here (recommended)</span></div>`;
 
@@ -2183,6 +2211,10 @@ function renderBluetoothList() {
 
   list.innerHTML = html;
 
+  list.querySelector("#btChannelCodeApply")?.addEventListener("click", applyBtChannelCode);
+  list.querySelector("#btChannelCodeInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") applyBtChannelCode();
+  });
   list.querySelector("[data-bt-audio]")?.addEventListener("click", () => connectBluetoothAudio());
   list.querySelector("[data-bt-add]")?.addEventListener("click", () => addBluetoothDevice());
   list.querySelector("[data-bt-disconnect]")?.addEventListener("click", () => disconnectBluetooth());
@@ -2757,6 +2789,7 @@ Object.assign(window, {
   signup,
   disconnectBluetooth,
   connectBluetoothAudio,
+  applyBtChannelCode,
   startTalk,
   stopTalk,
   logout,
