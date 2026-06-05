@@ -189,7 +189,11 @@ async function scanBluetooth() {
 
   try {
     if (!navigator.bluetooth) {
-      list.innerHTML = "Bluetooth not supported in this browser. Use Chrome on Android.";
+      list.innerHTML = `
+        <div class="item warn">Bluetooth scan not available in this browser.</div>
+        <div class="item">Use <strong>Chrome on Android</strong> for Bluetooth pairing.</div>
+        <div class="item">Or use <strong>Same WiFi — Team Connect</strong> (button 2).</div>
+      `;
       return;
     }
 
@@ -206,14 +210,38 @@ async function scanBluetooth() {
   }
 }
 
+function getNetworkHint() {
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (!conn) return "Network: WiFi or mobile data (type hidden by browser)";
+  const types = { wifi: "WiFi", cellular: "Mobile data", ethernet: "Ethernet", none: "Offline" };
+  const t = types[conn.type] || conn.type || "Unknown";
+  return `Network type: ${t}${conn.effectiveType ? ` (${conn.effectiveType})` : ""}`;
+}
+
 function scanWiFi() {
   const list = document.getElementById("wifiList");
+  const activeCh = channels.find((c) => c.id === currentChannel);
+  const channelName = activeCh ? activeCh.name : "Channel 1 - Team A";
+
   list.innerHTML = `
-    <div class="item">WiFi Direct / Local Network (Limited support)</div>
-    <div class="item">Full scan not available in browser</div>
-    <div class="item">Connect devices manually on same network</div>
+    <div class="info-banner">
+      <strong style="color:#00ff88;">Not broken</strong> — Chrome/Safari block WiFi device scan in web apps.
+      Real walkie apps (native) can scan; browser apps cannot.
+    </div>
+    <div class="item ok">${getNetworkHint()}</div>
+    <div class="item ok"><strong>Step 1:</strong> All phones connect to the <strong>same WiFi</strong> (or mobile hotspot).</div>
+    <div class="item ok"><strong>Step 2:</strong> Everyone picks the <strong>same channel</strong> below: <span style="color:#00ff88">${channelName}</span></div>
+    <div class="item ok"><strong>Step 3:</strong> Press PTT to talk (demo UI — voice needs native app or WebRTC upgrade).</div>
+    <div class="item warn"><strong>Bluetooth:</strong> Use button 1 on <strong>Chrome Android</strong> to pair nearby devices.</div>
   `;
-  document.getElementById("connStatus").innerHTML = "WiFi Direct - Limited";
+
+  document.getElementById("connStatus").innerHTML =
+    `Team mode: Same WiFi + channel «${channelName}»`;
+  document.getElementById("connStatus").style.color = "#00ff88";
+}
+
+function confirmTeamNetwork() {
+  scanWiFi();
 }
 
 function toggleMute() {
@@ -271,6 +299,7 @@ Object.assign(window, {
   signup,
   scanBluetooth,
   scanWiFi,
+  confirmTeamNetwork,
   toggleMute,
   startTalk,
   stopTalk,

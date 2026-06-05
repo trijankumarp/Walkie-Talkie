@@ -201,6 +201,18 @@
       border: 1px solid #00cc66;
     }
     .btn-secondary:hover { background: #1a2a1f; }
+    .info-banner {
+      background: #1a2a22;
+      border: 1px solid #00cc66;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 13px;
+      color: #aaa;
+      margin: 10px 0;
+      line-height: 1.5;
+    }
+    .item.ok { border-left: 3px solid #00cc66; }
+    .item.warn { border-left: 3px solid #ffcc00; }
   </style>
 </head>
 <body>
@@ -261,8 +273,11 @@
       <button class="btn" onclick="scanBluetooth()">1. Bluetooth Devices Scan</button>
       <div class="list" id="btList">Bluetooth devices will appear here...</div>
 
-      <button class="btn" onclick="scanWiFi()">2. WiFi / Direct Scan</button>
-      <div class="list" id="wifiList">WiFi devices will appear here...</div>
+      <button class="btn" onclick="scanWiFi()">2. Same WiFi — Team Connect</button>
+      <div class="list" id="wifiList">
+        <div class="item warn">Browser cannot scan WiFi devices (security limit — not a bug)</div>
+        <div class="item">Tap the green button above for team steps</div>
+      </div>
 
       <div class="status" id="connStatus">No Connection</div>
 
