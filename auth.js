@@ -6,6 +6,10 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  updateEmail,
+  updatePassword,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
   signInWithPopup,
   GoogleAuthProvider,
   signOut
@@ -23,6 +27,8 @@ const ERROR_MAP = {
   "auth/popup-blocked": "Popup blocked. Allow popups for this site.",
   "auth/operation-not-allowed": "This sign-in method is disabled in Firebase Console.",
   "auth/network-request-failed": "Network error. Check your connection.",
+  "auth/requires-recent-login": "Please logout and login again, then try this change.",
+  "auth/invalid-password": "Current password is wrong.",
   "auth/configuration-not-found":
     "Firebase Authentication is not enabled. Open Firebase Console → walkietalkie-mos → Build → Authentication → Get started, then enable Email/Password and Google."
 };
@@ -94,6 +100,30 @@ function getCurrentUser() {
   return auth?.currentUser ?? null;
 }
 
+async function reauthWithPassword(password) {
+  const user = auth?.currentUser;
+  if (!user?.email) throw new Error("No signed-in user.");
+  const cred = EmailAuthProvider.credential(user.email, password);
+  await reauthenticateWithCredential(user, cred);
+}
+
+async function updateDisplayName(name) {
+  if (!auth?.currentUser) throw new Error("Not signed in.");
+  await updateProfile(auth.currentUser, { displayName: name });
+}
+
+async function changeEmail(newEmail, currentPassword) {
+  if (!auth?.currentUser) throw new Error("Not signed in.");
+  await reauthWithPassword(currentPassword);
+  await updateEmail(auth.currentUser, newEmail);
+}
+
+async function changePassword(currentPassword, newPassword) {
+  if (!auth?.currentUser) throw new Error("Not signed in.");
+  await reauthWithPassword(currentPassword);
+  await updatePassword(auth.currentUser, newPassword);
+}
+
 init();
 
 window.mosAuth = {
@@ -103,7 +133,10 @@ window.mosAuth = {
   signupEmail,
   loginGoogle,
   logout,
-  getCurrentUser
+  getCurrentUser,
+  updateDisplayName,
+  changeEmail,
+  changePassword
 };
 
 window.dispatchEvent(new Event("mosAuthReady"));

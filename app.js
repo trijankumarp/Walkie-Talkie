@@ -1,13 +1,22 @@
 const CHANNELS_KEY = "walkie_channels_v1";
 const THEME_KEY = "walkie_theme_v1";
+const BT_DEVICES_KEY = "walkie_bt_devices_v1";
+const WIFI_SEL_KEY = "walkie_wifi_selected_v1";
+const PROFILE_MOBILE_KEY = "walkie_profile_mobile_v1";
 
 let isLoggedIn = false;
 let wifiConnectedName = null;
+let selectedWifiName = null;
 let isTalking = false;
 let currentChannel = null;
 let channels = [];
 let bleDevice = null;
 let loggedInUser = null;
+let btPanelOpen = false;
+let wifiPanelOpen = false;
+let profilePanelOpen = false;
+let selectedBtId = null;
+let savedBtDevices = [];
 
 function loadChannels() {
   try {
@@ -51,20 +60,82 @@ function closeMenu() {
   document.getElementById("sideMenu")?.classList.remove("open");
 }
 
-function showBluetoothInstructions() {
-  const bt = document.getElementById("btInstructions");
-  const wifi = document.getElementById("wifiInstructions");
-  if (bt) bt.classList.add("visible");
-  if (wifi) wifi.classList.remove("visible");
-  bt?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+function loadBtDevices() {
+  try {
+    const raw = localStorage.getItem(BT_DEVICES_KEY);
+    savedBtDevices = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(savedBtDevices)) savedBtDevices = [];
+  } catch {
+    savedBtDevices = [];
+  }
 }
 
-function showWifiInstructions() {
-  const bt = document.getElementById("btInstructions");
-  const wifi = document.getElementById("wifiInstructions");
-  if (wifi) wifi.classList.add("visible");
-  if (bt) bt.classList.remove("visible");
-  wifi?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+function saveBtDevices() {
+  localStorage.setItem(BT_DEVICES_KEY, JSON.stringify(savedBtDevices));
+}
+
+function loadSelectedWifi() {
+  selectedWifiName = localStorage.getItem(WIFI_SEL_KEY) || null;
+}
+
+function setConnectPanels(btOpen, wifiOpen) {
+  btPanelOpen = btOpen;
+  wifiPanelOpen = wifiOpen;
+  document.getElementById("btnBtAction")?.classList.toggle("selected", btOpen);
+  document.getElementById("btnWifiAction")?.classList.toggle("selected", wifiOpen);
+  document.getElementById("btPanel")?.classList.toggle("open", btOpen);
+  document.getElementById("wifiPanel")?.classList.toggle("open", wifiOpen);
+}
+
+function toggleBluetoothPanel(forceOpen) {
+  const next = forceOpen === true ? true : forceOpen === false ? false : !btPanelOpen;
+  if (next) {
+    setConnectPanels(true, false);
+    renderBluetoothList();
+  } else {
+    setConnectPanels(false, wifiPanelOpen);
+  }
+}
+
+function toggleWifiPanel(forceOpen) {
+  const next = forceOpen === true ? true : forceOpen === false ? false : !wifiPanelOpen;
+  if (next) {
+    setConnectPanels(false, true);
+    refreshWifiList();
+  } else {
+    setConnectPanels(btPanelOpen, false);
+  }
+}
+
+function toggleProfilePanel() {
+  profilePanelOpen = !profilePanelOpen;
+  document.getElementById("btnProfileAction")?.classList.toggle("selected", profilePanelOpen);
+  document.getElementById("profilePanel")?.classList.toggle("open", profilePanelOpen);
+  if (profilePanelOpen) fillProfileForm();
+}
+
+function setProfileMsg(msg, isError) {
+  const el = document.getElementById("profileMsg");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "profile-msg" + (msg ? (isError ? " err" : " ok") : "");
+}
+
+function fillProfileForm() {
+  if (!loggedInUser) return;
+  const name = document.getElementById("profileName");
+  const email = document.getElementById("profileEmail");
+  const mobile = document.getElementById("profileMobile");
+  if (name) name.value = loggedInUser.name || "";
+  if (email) email.value = loggedInUser.email || "";
+  if (mobile) {
+    const uid = loggedInUser.uid || loggedInUser.email;
+    mobile.value = localStorage.getItem(`${PROFILE_MOBILE_KEY}_${uid}`) || "";
+  }
+}
+
+function getProfileUid() {
+  return loggedInUser?.uid || window.mosAuth?.getCurrentUser()?.uid || loggedInUser?.email;
 }
 
 function updateBtChip(connected, name) {
@@ -177,10 +248,10 @@ function setBtStatus(connected, name) {
   const el = document.getElementById("btStatus");
   if (el) {
     if (connected && name) {
-      el.textContent = `Bluetooth: Connected — ${name}`;
+      el.textContent = `Connected — ${name}`;
       el.className = "conn-line connected";
     } else {
-      el.textContent = "Bluetooth: Not connected";
+      el.textContent = "Not connected — tap a device below";
       el.className = "conn-line disconnected";
     }
   }
@@ -191,10 +262,10 @@ function setWifiStatus(connected, name) {
   const el = document.getElementById("wifiStatus");
   if (el) {
     if (connected && name) {
-      el.textContent = `WiFi: Connected — ${name}`;
+      el.textContent = `Selected — ${name}`;
       el.className = "conn-line connected";
     } else {
-      el.textContent = "WiFi: Not connected";
+      el.textContent = "Not selected — tap a network below";
       el.className = "conn-line disconnected";
     }
   }
@@ -213,18 +284,27 @@ function refreshStatusBar() {
 
 function enterApp(user) {
   isLoggedIn = true;
-  loggedInUser = user;
+  loggedInUser = {
+    uid: user.uid,
+    name: user.name || user.displayName || (user.email || "").split("@")[0],
+    email: user.email
+  };
   loadChannels();
+  loadBtDevices();
+  loadSelectedWifi();
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("mainUI").style.display = "block";
   refreshStatusBar();
   renderChannels();
   updatePttHint();
+  if (selectedWifiName) setWifiStatus(true, selectedWifiName);
+  renderBluetoothList();
 }
 
 window.onFirebaseUser = function (firebaseUser) {
   if (!firebaseUser || isLoggedIn) return;
   enterApp({
+    uid: firebaseUser.uid,
     name: firebaseUser.displayName || firebaseUser.email.split("@")[0],
     email: firebaseUser.email
   });
@@ -277,6 +357,7 @@ async function login() {
   try {
     const user = await window.mosAuth.loginEmail(email, password);
     enterApp({
+      uid: user.uid,
       name: user.displayName || user.email.split("@")[0],
       email: user.email
     });
@@ -303,6 +384,7 @@ async function loginWithGoogle() {
   try {
     const user = await window.mosAuth.loginGoogle();
     enterApp({
+      uid: user.uid,
       name: user.displayName || user.email.split("@")[0],
       email: user.email
     });
@@ -381,75 +463,143 @@ function addNewChannel() {
   renderChannels();
 }
 
-function setBluetoothUi(connected, deviceName) {
-  const disconnectBtn = document.getElementById("btnBtDisconnect");
-  if (connected) {
-    if (disconnectBtn) disconnectBtn.style.display = "block";
-    setBtStatus(true, deviceName);
-  } else {
-    if (disconnectBtn) disconnectBtn.style.display = "none";
+function setBluetoothUi(connected, deviceName, deviceId) {
+  if (connected && deviceId) selectedBtId = deviceId;
+  if (!connected) {
+    selectedBtId = null;
     bleDevice = null;
-    setBtStatus(false);
   }
+  setBtStatus(connected, deviceName);
+  renderBluetoothList();
 }
 
 async function disconnectBluetooth() {
   try {
-    if (bleDevice?.gatt?.connected) {
-      bleDevice.gatt.disconnect();
-    }
+    if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
   } catch {
     /* ignore */
   }
   bleDevice = null;
+  selectedBtId = null;
   setBluetoothUi(false);
-  document.getElementById("btList").innerHTML =
-    '<div class="item">Bluetooth disconnected. Tap Bluetooth to pair again.</div>';
-  setBtStatus(false);
 }
 
-async function scanBluetooth() {
+function renderBluetoothList() {
   const list = document.getElementById("btList");
-  list.innerHTML = '<div class="item">Opening Bluetooth device picker...</div>';
+  if (!list) return;
+
+  if (!navigator.bluetooth) {
+    list.innerHTML =
+      '<div class="pick-item warn">Bluetooth needs Chrome, Edge, or Windows app.</div>';
+    return;
+  }
+
+  let html = `<div class="pick-item add-row" data-bt-add="1">+ Add Bluetooth device</div>`;
+
+  savedBtDevices.forEach((d) => {
+    const active = selectedBtId === d.id && bleDevice ? " active" : "";
+    const conn = selectedBtId === d.id && bleDevice ? " · connected" : "";
+    html += `<div class="pick-item${active}" data-bt-id="1">${escapeHtml(d.name)}${conn}</div>`;
+  });
+
+  if (!savedBtDevices.length) {
+    html += '<div class="pick-item warn">No devices yet. Tap + Add above.</div>';
+  }
+
+  list.innerHTML = html;
+
+  list.querySelector("[data-bt-add]")?.addEventListener("click", () => addBluetoothDevice());
+  const rows = list.querySelectorAll("[data-bt-id]");
+  savedBtDevices.forEach((d, i) => {
+    const el = rows[i];
+    if (!el) return;
+    el.addEventListener("click", () => {
+      if (selectedBtId === d.id && bleDevice) disconnectBluetooth();
+      else connectBluetoothDevice(d.id);
+    });
+  });
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function addBluetoothDevice() {
+  const list = document.getElementById("btList");
+  if (!navigator.bluetooth) return;
 
   try {
-    if (!navigator.bluetooth) {
-      list.innerHTML = `
-        <div class="item warn">Bluetooth not supported here.</div>
-        <div class="item">Use <strong>Chrome</strong>, <strong>Edge</strong>, or <strong>Windows app</strong> (npm run windows).</div>
-      `;
-      return;
-    }
-
     const device = await navigator.bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: ["battery_service", "device_information"]
     });
+    const id = device.id || device.name || `bt-${Date.now()}`;
+    const name = device.name || "Bluetooth device";
+    if (!savedBtDevices.some((d) => d.id === id)) {
+      savedBtDevices.push({ id, name });
+      saveBtDevices();
+    }
+    await connectBluetoothDevice(id, device);
+  } catch (err) {
+    if (err?.name !== "NotFoundError" && list) {
+      const warn = document.createElement("div");
+      warn.className = "pick-item warn";
+      warn.textContent = err.message || "Could not add device.";
+      list.appendChild(warn);
+    }
+  }
+}
+
+async function connectBluetoothDevice(deviceId, knownDevice) {
+  const saved = savedBtDevices.find((d) => d.id === deviceId);
+  if (!saved && !knownDevice) return;
+
+  const list = document.getElementById("btList");
+  if (list) {
+    const loading = document.createElement("div");
+    loading.className = "pick-item warn";
+    loading.id = "btLoading";
+    loading.textContent = "Connecting…";
+    list.appendChild(loading);
+  }
+
+  try {
+    let device = knownDevice;
+    if (!device) {
+      if (!navigator.bluetooth) throw new Error("Bluetooth not supported");
+      const filters = saved.name ? [{ name: saved.name }] : [];
+      device = await navigator.bluetooth.requestDevice({
+        filters: filters.length ? filters : undefined,
+        acceptAllDevices: !filters.length,
+        optionalServices: ["battery_service", "device_information"]
+      });
+    }
 
     bleDevice = device;
     device.addEventListener("gattserverdisconnected", () => {
       setBluetoothUi(false);
-      list.innerHTML = '<div class="item warn">Bluetooth device disconnected.</div>';
     });
 
-    list.innerHTML = `<div class="item">Connecting to ${device.name || "device"}...</div>`;
+    if (device.gatt) await device.gatt.connect();
 
-    if (device.gatt) {
-      await device.gatt.connect();
+    const name = device.name || saved?.name || "Bluetooth device";
+    const id = device.id || deviceId;
+    if (!savedBtDevices.some((d) => d.id === id)) {
+      savedBtDevices.push({ id, name });
+      saveBtDevices();
     }
-
-    const name = device.name || "Bluetooth device";
-    list.innerHTML = `
-      <div class="item ok">Connected: <strong>${name}</strong></div>
-      <div class="item ok">Device is paired. Use the same channel for team talk.</div>
-    `;
-    setBluetoothUi(true, name);
+    document.getElementById("btLoading")?.remove();
+    setBluetoothUi(true, name, id);
   } catch (err) {
-    if (err?.name === "NotFoundError") {
-      list.innerHTML = '<div class="item">No device selected.</div>';
-    } else {
-      list.innerHTML = `<div class="item warn">${err.message || "Bluetooth failed. Allow Bluetooth and try again."}</div>`;
+    document.getElementById("btLoading")?.remove();
+    if (err?.name !== "NotFoundError") {
+      setBtStatus(false);
+      alert(err.message || "Bluetooth connection failed.");
     }
+    renderBluetoothList();
   }
 }
 
@@ -461,33 +611,74 @@ function getNetworkHint() {
   return `Network: ${t}${conn.effectiveType ? ` (${conn.effectiveType})` : ""}`;
 }
 
-async function scanWiFi() {
+function selectWifiNetwork(name) {
+  if (selectedWifiName === name) {
+    selectedWifiName = null;
+    localStorage.removeItem(WIFI_SEL_KEY);
+    setWifiStatus(false);
+  } else {
+    selectedWifiName = name;
+    localStorage.setItem(WIFI_SEL_KEY, name);
+    wifiConnectedName = name;
+    setWifiStatus(true, name);
+  }
+  renderWifiList(lastWifiScanNetworks, lastWifiConnected);
+}
+
+let lastWifiScanNetworks = [];
+let lastWifiConnected = "";
+
+function renderWifiList(networks, connectedSsid) {
   const list = document.getElementById("wifiList");
-  const channelName = getActiveChannelName() || "(no channel — create one)";
+  if (!list) return;
+
+  if (!networks.length) {
+    list.innerHTML =
+      '<div class="pick-item warn">No networks found. Use Windows app for full scan, or join WiFi in phone settings.</div>';
+    return;
+  }
+
+  let html = "";
+  if (connectedSsid) {
+    const active = selectedWifiName === connectedSsid ? " active" : "";
+    html += `<div class="pick-item${active}" data-wifi="${escapeHtml(connectedSsid)}">${escapeHtml(connectedSsid)} (connected)</div>`;
+  }
+
+  networks.forEach((n) => {
+    if (n === connectedSsid) return;
+    const active = selectedWifiName === n ? " active" : "";
+    html += `<div class="pick-item${active}" data-wifi="${escapeHtml(n)}">${escapeHtml(n)}</div>`;
+  });
+
+  list.innerHTML = html;
+  list.querySelectorAll("[data-wifi]").forEach((el) => {
+    el.addEventListener("click", () => selectWifiNetwork(el.getAttribute("data-wifi")));
+  });
+}
+
+async function refreshWifiList() {
+  const list = document.getElementById("wifiList");
+  if (!list) return;
+  list.innerHTML = '<div class="pick-item warn">Scanning…</div>';
+
+  const channelName = getActiveChannelName() || "your team";
 
   if (window.windowsAPI?.scanWifiNetworks) {
-    list.innerHTML = '<div class="item">Scanning WiFi (Windows)...</div>';
     try {
       const result = await window.windowsAPI.scanWifiNetworks();
       if (result.ok && result.networks.length) {
-        const connected = result.connected
-          ? `<div class="item ok">Connected: <strong>${result.connected}</strong></div>`
-          : "";
-        const items = result.networks.map((n) => `<div class="item ok">${n}</div>`).join("");
-        list.innerHTML = `${connected}${items}<div class="item ok">Channel: ${channelName}</div>`;
-        if (result.connected) {
-          wifiConnectedName = result.connected;
-          setWifiStatus(true, result.connected);
-        } else {
-          wifiConnectedName = null;
-          setWifiStatus(false);
+        lastWifiScanNetworks = result.networks;
+        lastWifiConnected = result.connected || "";
+        renderWifiList(result.networks, result.connected);
+        if (result.connected && !selectedWifiName) {
+          selectWifiNetwork(result.connected);
         }
         return;
       }
-      list.innerHTML = `<div class="item warn">${result.message || "No networks found."}</div>`;
+      list.innerHTML = `<div class="pick-item warn">${result.message || "No networks found."}</div>`;
       return;
     } catch (err) {
-      list.innerHTML = `<div class="item warn">${err.message}</div>`;
+      list.innerHTML = `<div class="pick-item warn">${escapeHtml(err.message)}</div>`;
       return;
     }
   }
@@ -495,20 +686,67 @@ async function scanWiFi() {
   const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
   const onWifi = conn?.type === "wifi";
   const hint = getNetworkHint();
+  lastWifiScanNetworks = onWifi ? ["Current WiFi (browser)"] : [];
+  lastWifiConnected = onWifi ? "Current WiFi (browser)" : "";
 
   list.innerHTML = `
-    <div class="item ok">${hint}</div>
-    <div class="item ok">Put all devices on the <strong>same WiFi</strong>.</div>
-    <div class="item ok">Use the same channel: <strong>${channelName}</strong></div>
-    <div class="item warn">For full WiFi list scan use the Windows desktop app (npm run windows).</div>
+    <div class="pick-item warn">${escapeHtml(hint)}</div>
+    <div class="pick-item${selectedWifiName === "team-wifi" ? " active" : ""}" data-wifi="team-wifi">Same WiFi as team (tap to select)</div>
+    <div class="pick-item warn">Team channel: ${escapeHtml(channelName)}. Full list: Windows app.</div>
   `;
+  list.querySelectorAll("[data-wifi]").forEach((el) => {
+    el.addEventListener("click", () => selectWifiNetwork(el.getAttribute("data-wifi")));
+  });
+}
 
-  if (onWifi) {
-    wifiConnectedName = "WiFi (browser)";
-    setWifiStatus(true, "On WiFi — same network as team");
-  } else {
-    wifiConnectedName = null;
-    setWifiStatus(false);
+async function saveProfileName() {
+  const name = document.getElementById("profileName")?.value.trim();
+  if (!name) return setProfileMsg("Enter your name.", true);
+  try {
+    await window.mosAuth.updateDisplayName(name);
+    loggedInUser.name = name;
+    refreshStatusBar();
+    setProfileMsg("Name updated.");
+  } catch (err) {
+    setProfileMsg(window.mosAuth.mapError(err), true);
+  }
+}
+
+async function saveProfileEmail() {
+  const email = document.getElementById("profileEmail")?.value.trim().toLowerCase();
+  const pass = document.getElementById("profileCurrentPass")?.value;
+  if (!email || !isValidEmail(email)) return setProfileMsg("Enter a valid email.", true);
+  if (!pass) return setProfileMsg("Enter current password to change email.", true);
+  try {
+    await window.mosAuth.changeEmail(email, pass);
+    loggedInUser.email = email;
+    refreshStatusBar();
+    setProfileMsg("Email updated.");
+  } catch (err) {
+    setProfileMsg(window.mosAuth.mapError(err), true);
+  }
+}
+
+async function saveProfileMobile() {
+  const mobile = document.getElementById("profileMobile")?.value.trim();
+  const uid = getProfileUid();
+  if (!mobile) return setProfileMsg("Enter mobile number.", true);
+  localStorage.setItem(`${PROFILE_MOBILE_KEY}_${uid}`, mobile);
+  setProfileMsg("Mobile number saved.");
+}
+
+async function saveProfilePassword() {
+  const cur = document.getElementById("profileCurrentPass")?.value;
+  const neu = document.getElementById("profileNewPass")?.value;
+  if (!cur) return setProfileMsg("Enter current password.", true);
+  if (!neu || neu.length < 6) return setProfileMsg("New password min 6 characters.", true);
+  try {
+    await window.mosAuth.changePassword(cur, neu);
+    document.getElementById("profileCurrentPass").value = "";
+    document.getElementById("profileNewPass").value = "";
+    setProfileMsg("Password changed.");
+  } catch (err) {
+    setProfileMsg(window.mosAuth.mapError(err), true);
   }
 }
 
@@ -545,6 +783,8 @@ async function logout() {
   isLoggedIn = false;
   stopTalk();
   closeMenu();
+  setConnectPanels(false, false);
+  profilePanelOpen = false;
   await disconnectBluetooth();
   try {
     await window.mosAuth.logout();
@@ -560,6 +800,8 @@ async function logout() {
 function boot() {
   initTheme();
   loadChannels();
+  loadBtDevices();
+  loadSelectedWifi();
   setBtStatus(false);
   setWifiStatus(false);
   if (!window.mosAuth?.isConfigured()) {
@@ -588,16 +830,20 @@ Object.assign(window, {
   toggleTheme,
   openMenu,
   closeMenu,
-  showBluetoothInstructions,
-  showWifiInstructions,
+  toggleBluetoothPanel,
+  toggleWifiPanel,
+  toggleProfilePanel,
+  refreshWifiList,
+  saveProfileName,
+  saveProfileEmail,
+  saveProfileMobile,
+  saveProfilePassword,
   showAuthTab,
   login,
   loginWithGoogle,
   signupWithGoogle,
   signup,
-  scanBluetooth,
   disconnectBluetooth,
-  scanWiFi,
   startTalk,
   stopTalk,
   logout,

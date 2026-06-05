@@ -462,13 +462,63 @@
       transition: background 0.2s, transform 0.15s;
     }
     .action-btn:hover .action-circle { background: var(--accent-soft); transform: scale(1.03); }
+    .action-btn.selected .action-circle {
+      background: var(--text);
+      border-color: var(--text);
+    }
+    .action-btn.selected .action-circle svg { stroke: var(--bg-card); }
+    html[data-theme="dark"] .action-btn.selected .action-circle {
+      background: #fafafa;
+      border-color: #fafafa;
+    }
+    html[data-theme="dark"] .action-btn.selected .action-circle svg { stroke: #171717; }
     .action-btn .action-circle svg { width: 26px; height: 26px; stroke: var(--text); fill: none; }
-    .menu-list { margin-top: 8px; max-height: 100px; overflow-y: auto; }
-    .instructions-panel {
+    .menu-panel {
       display: none;
       margin-top: 12px;
     }
-    .instructions-panel.visible { display: block; }
+    .menu-panel.open { display: block; }
+    .pick-list {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      max-height: 180px;
+      overflow-y: auto;
+      margin: 8px 0;
+    }
+    .pick-item {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .pick-item:last-child { border-bottom: none; }
+    .pick-item:hover { background: var(--accent-soft); color: var(--text); }
+    .pick-item.active {
+      background: var(--accent-soft);
+      color: var(--text);
+      font-weight: 600;
+    }
+    .pick-item.add-row { color: var(--text); font-weight: 500; }
+    .pick-item.warn { cursor: default; font-size: 13px; }
+    .pick-item.warn:hover { background: transparent; }
+    .profile-msg {
+      font-size: 12px;
+      text-align: center;
+      margin: 8px 0 0;
+      min-height: 16px;
+      color: var(--text-muted);
+    }
+    .profile-msg.ok { color: var(--text); }
+    .profile-msg.err { color: var(--red); }
+    .profile-field { margin-bottom: 4px; }
+    .btn-sm {
+      padding: 10px 14px;
+      font-size: 14px;
+      margin: 4px 0 12px;
+    }
     .menu-theme-row {
       display: flex;
       align-items: center;
@@ -485,6 +535,10 @@
       transition: background 0.2s;
     }
     .menu-theme-row:hover { background: var(--accent-soft); }
+    .menu-theme-row.selected {
+      border-color: var(--text-muted);
+      background: var(--accent-soft);
+    }
     .menu-theme-row .theme-toggle {
       width: 36px;
       height: 36px;
@@ -692,8 +746,8 @@
           </div>
         </div>
         <div class="conn-chips">
-          <button type="button" class="chip" id="btChip" onclick="openMenu(); showBluetoothInstructions();">Bluetooth: Off</button>
-          <button type="button" class="chip" id="wifiChip" onclick="openMenu(); showWifiInstructions();">WiFi: Off</button>
+          <button type="button" class="chip" id="btChip" onclick="openMenu(); toggleBluetoothPanel(true);">Bluetooth: Off</button>
+          <button type="button" class="chip" id="wifiChip" onclick="openMenu(); toggleWifiPanel(true);">WiFi: Off</button>
         </div>
       </div>
     </div>
@@ -721,13 +775,13 @@
     <div class="menu-block">
       <p class="menu-block-title">Connect</p>
       <div class="action-grid">
-        <button type="button" class="action-btn" onclick="showBluetoothInstructions()">
+        <button type="button" class="action-btn" id="btnBtAction" onclick="toggleBluetoothPanel()">
           <span class="action-circle">
             <svg viewBox="0 0 24 24" stroke-width="2"><path d="M6.5 6.5a8 8 0 0 1 11 11M9 9a4 4 0 0 1 6 6M12 12h.01"/></svg>
           </span>
           Bluetooth
         </button>
-        <button type="button" class="action-btn" onclick="showWifiInstructions()">
+        <button type="button" class="action-btn" id="btnWifiAction" onclick="toggleWifiPanel()">
           <span class="action-circle">
             <svg viewBox="0 0 24 24" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14 0M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
           </span>
@@ -735,36 +789,57 @@
         </button>
       </div>
 
-      <div id="btInstructions" class="instructions-panel help-box">
-        <strong>How to connect Bluetooth</strong>
-        <ol>
-          <li>Turn on <strong>Bluetooth</strong> on your phone or PC.</li>
-          <li>Use <strong>Chrome</strong> or <strong>Edge</strong> (or Windows app).</li>
-          <li>Tap <strong>Connect Bluetooth</strong> below and pick your device.</li>
-          <li>Allow pairing. Status shows <strong>Connected</strong> or <strong>Not connected</strong>.</li>
-        </ol>
-        <button type="button" class="btn" style="margin-top:10px;" onclick="scanBluetooth()">Connect Bluetooth</button>
-      </div>
-      <div id="wifiInstructions" class="instructions-panel help-box">
-        <strong>How to connect WiFi (team)</strong>
-        <ol>
-          <li>Connect every team member to the <strong>same WiFi</strong> network.</li>
-          <li>Open phone/PC WiFi settings and join that network.</li>
-          <li>Tap <strong>Check WiFi</strong> below to see status (Windows app shows full list).</li>
-          <li>Select the <strong>same team/channel</strong> in the menu for group talk.</li>
-        </ol>
-        <button type="button" class="btn" style="margin-top:10px;" onclick="scanWiFi()">Check WiFi</button>
+      <div id="btPanel" class="menu-panel">
+        <div class="help-box" style="margin-bottom:8px;">
+          <strong>Bluetooth</strong> — tap a device below. Turn on BT on your device. Use Chrome, Edge, or Windows app.
+        </div>
+        <div id="btStatus" class="conn-line disconnected">Not connected</div>
+        <div class="pick-list" id="btList"></div>
       </div>
 
-      <div id="btStatus" class="conn-line disconnected">Bluetooth: Not connected</div>
-      <div class="list menu-list" id="btList"></div>
-      <button class="btn btn-disconnect" id="btnBtDisconnect" style="display:none;" onclick="disconnectBluetooth()">Disconnect Bluetooth</button>
-      <div id="wifiStatus" class="conn-line disconnected">WiFi: Not connected</div>
-      <div class="list menu-list" id="wifiList"></div>
+      <div id="wifiPanel" class="menu-panel">
+        <div class="help-box" style="margin-bottom:8px;">
+          <strong>WiFi</strong> — tap your network below. All team members use the same WiFi + same team channel.
+        </div>
+        <div id="wifiStatus" class="conn-line disconnected">Not connected</div>
+        <div class="pick-list" id="wifiList"></div>
+        <button type="button" class="btn btn-sm" onclick="refreshWifiList()">Refresh WiFi list</button>
+      </div>
     </div>
 
     <div class="menu-block">
-      <button type="button" class="menu-theme-row" onclick="toggleTheme()">
+      <button type="button" class="menu-theme-row" id="btnProfileAction" onclick="toggleProfilePanel()">
+        <span class="action-circle" style="width:36px;height:36px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </span>
+        Profile
+      </button>
+      <div id="profilePanel" class="menu-panel">
+        <label class="field-label profile-field" for="profileName">Name</label>
+        <input type="text" id="profileName" placeholder="Your name" autocomplete="name">
+        <button type="button" class="btn btn-sm" onclick="saveProfileName()">Save name</button>
+
+        <label class="field-label profile-field" for="profileEmail">Email</label>
+        <input type="email" id="profileEmail" placeholder="Email" autocomplete="email">
+        <button type="button" class="btn btn-sm" onclick="saveProfileEmail()">Save email</button>
+
+        <label class="field-label profile-field" for="profileMobile">Mobile number</label>
+        <input type="tel" id="profileMobile" placeholder="10-digit mobile" autocomplete="tel">
+        <button type="button" class="btn btn-sm" onclick="saveProfileMobile()">Save mobile</button>
+
+        <label class="field-label profile-field" for="profileCurrentPass">Current password</label>
+        <input type="password" id="profileCurrentPass" placeholder="For email / password change" autocomplete="current-password">
+
+        <label class="field-label profile-field" for="profileNewPass">New password</label>
+        <input type="password" id="profileNewPass" placeholder="Min 6 characters" autocomplete="new-password">
+        <button type="button" class="btn btn-sm" onclick="saveProfilePassword()">Change password</button>
+
+        <p id="profileMsg" class="profile-msg"></p>
+      </div>
+    </div>
+
+    <div class="menu-block">
+      <button type="button" class="menu-theme-row" id="btnThemeRow" onclick="toggleTheme()">
         <span class="theme-toggle" aria-hidden="true">
           <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
             <circle cx="20" cy="20" r="19" fill="#fafafa"/>
