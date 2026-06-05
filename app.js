@@ -245,7 +245,9 @@ function renderSettingsList() {
     firstName = parsed.firstName;
     lastName = parsed.lastName;
   }
-  const fullName = `${firstName} ${lastName}`.trim() || loggedInUser.name || "Not set";
+  const normalized = normalizeNameFields(firstName, lastName);
+  const fullName =
+    `${normalized.firstName} ${normalized.lastName}`.trim() || loggedInUser.name || "Not set";
 
   applyAvatarToElement(document.getElementById("settingsListAvatar"), getStoredAvatar(), fullName);
 
@@ -303,14 +305,40 @@ function stripSpacesFromFirstName(value) {
   return (value || "").replace(/\s+/g, "");
 }
 
+function normalizeNameFields(firstName, lastName) {
+  let first = (firstName || "").trim();
+  let last = (lastName || "").trim();
+  if (/\s/.test(first)) {
+    const parts = first.split(/\s+/).filter(Boolean);
+    first = parts[0] || "";
+    const extra = parts.slice(1).join(" ");
+    last = [extra, last].filter(Boolean).join(" ").trim();
+  }
+  first = stripSpacesFromFirstName(first);
+  return { firstName: first, lastName: last };
+}
+
 function bindNoSpaceFirstName(...ids) {
   ids.forEach((id) => {
     const el = document.getElementById(id);
     if (!el || el.dataset.noSpaceBound) return;
     el.dataset.noSpaceBound = "1";
-    el.addEventListener("input", () => {
+    const clean = () => {
       const cleaned = stripSpacesFromFirstName(el.value);
       if (el.value !== cleaned) el.value = cleaned;
+    };
+    el.addEventListener("input", clean);
+    el.addEventListener("keydown", (e) => {
+      if (e.key === " " || e.code === "Space") e.preventDefault();
+    });
+    el.addEventListener("paste", (e) => {
+      e.preventDefault();
+      const text = (e.clipboardData?.getData("text") || "").replace(/\s+/g, "");
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? el.value.length;
+      el.value = el.value.slice(0, start) + text + el.value.slice(end);
+      el.setSelectionRange(start + text.length, start + text.length);
+      clean();
     });
   });
 }
@@ -370,6 +398,7 @@ function toggleSettingsEditor(key) {
 
   fillProfileForm();
   bindNoSpaceFirstName("profileFirstName");
+  if (key === "delete") setupDeleteAccountEditor();
   if (key === "permissions") renderAppPermissions();
   if (key === "photo") {
     const grid = document.getElementById("emojiGrid");
@@ -417,11 +446,20 @@ function buildSettingsEditorHtml(key) {
       <p class="profile-hint">Choose a photo, take one, or pick an emoji.</p>
       <div id="emojiGridMount"></div>`,
     name: `
-      <label class="profile-label">First name</label>
-      <input type="text" id="profileFirstName" class="profile-input" placeholder="First name (no spaces)" autocomplete="given-name">
-      <label class="profile-label">Last name</label>
-      <input type="text" id="profileLastName" class="profile-input" placeholder="Last name" autocomplete="family-name">
-      <button type="button" class="btn btn-sm" onclick="saveProfileName()">Save name</button>`,
+      <div class="name-edit-panel">
+        <label class="profile-label">First name</label>
+        <input type="text" id="profileFirstName" class="profile-input" placeholder="First name" autocomplete="given-name">
+        <label class="profile-label">Last name</label>
+        <input type="text" id="profileLastName" class="profile-input" placeholder="Last name" autocomplete="family-name">
+        <div class="name-visibility">
+          <p class="name-visibility-title">Who can see your name</p>
+          <p class="name-visibility-text">Anyone you connect with on Walkie Talkie can see this name.</p>
+        </div>
+        <div class="name-edit-actions">
+          <button type="button" class="btn-text" onclick="cancelNameEdit()">Cancel</button>
+          <button type="button" class="btn btn-sm name-save-btn" onclick="saveProfileName()">Save</button>
+        </div>
+      </div>`,
     gender: `
       <label class="profile-label">Gender</label>
       <select id="profileGender" class="profile-input">${genderOpts}</select>
@@ -484,7 +522,18 @@ function buildSettingsEditorHtml(key) {
         <input type="checkbox" id="profileBiometric" onchange="onBiometricToggle(this.checked)">
         Use fingerprint / face on this device
       </label>
-      <button type="button" class="btn btn-sm" onclick="setupBiometric()">Set up biometric</button>`
+      <button type="button" class="btn btn-sm" onclick="setupBiometric()">Set up biometric</button>`,
+    delete: `
+      <p class="delete-account-warn">This permanently deletes your account and profile. This cannot be undone.</p>
+      <div id="deleteAccountPassWrap">
+        <label class="profile-label">Password</label>
+        <input type="password" id="deleteAccountPass" class="profile-input" placeholder="Enter password to confirm" autocomplete="current-password">
+      </div>
+      <p class="profile-hint" id="deleteAccountGoogleHint" style="display:none;">You will confirm with Google in the next step.</p>
+      <div class="name-edit-actions">
+        <button type="button" class="btn-text" onclick="closeSettingsEditor()">Cancel</button>
+        <button type="button" class="btn btn-sm btn-danger" onclick="confirmDeleteAccount()">Delete account</button>
+      </div>`
   };
   return editors[key] || "<p class=\"profile-hint\">Not available.</p>";
 }
@@ -970,9 +1019,10 @@ function fillProfileForm() {
     names.firstName = parsed.firstName;
     names.lastName = parsed.lastName;
   }
+  const normalized = normalizeNameFields(names.firstName, names.lastName);
 
-  if (first) first.value = names.firstName || "";
-  if (last) last.value = names.lastName || "";
+  if (first) first.value = normalized.firstName || "";
+  if (last) last.value = normalized.lastName || "";
   if (email) email.value = "";
   updateEmailVerifiedBadge();
 
@@ -1196,10 +1246,9 @@ function getSignupE164() {
 
 async function signup() {
   if (!requireFirebase()) return;
-  const firstName = stripSpacesFromFirstName(
-    document.getElementById("signupFirstName")?.value.trim()
-  );
-  const lastName = document.getElementById("signupLastName")?.value.trim();
+  const rawFirst = document.getElementById("signupFirstName")?.value.trim() || "";
+  const rawLast = document.getElementById("signupLastName")?.value.trim() || "";
+  const { firstName, lastName } = normalizeNameFields(rawFirst, rawLast);
   const email = document.getElementById("signupEmail").value.trim().toLowerCase();
   const country = document.getElementById("signupCountry")?.value || "+91";
   const mobile = document.getElementById("signupMobile")?.value.trim().replace(/\D/g, "");
@@ -1611,11 +1660,58 @@ async function refreshWifiList() {
   });
 }
 
+function cancelNameEdit() {
+  closeSettingsEditor();
+  renderSettingsList();
+}
+
+function setupDeleteAccountEditor() {
+  const user = window.mosAuth?.getCurrentUser?.();
+  const hasPassword = window.mosAuth?.userHasPasswordProvider?.(user);
+  const passWrap = document.getElementById("deleteAccountPassWrap");
+  const googleHint = document.getElementById("deleteAccountGoogleHint");
+  if (passWrap) passWrap.style.display = hasPassword ? "block" : "none";
+  if (googleHint) googleHint.style.display = hasPassword ? "none" : "block";
+}
+
+function clearLocalUserData(uid) {
+  if (!uid) return;
+  [
+    PROFILE_NAMES_KEY,
+    PROFILE_MOBILE_KEY,
+    PROFILE_AVATAR_KEY,
+    PROFILE_COUNTRY_KEY,
+    PROFILE_EXTRA_KEY,
+    BIOMETRIC_KEY,
+    PASSWORD_CHANGED_KEY
+  ].forEach((key) => localStorage.removeItem(`${key}_${uid}`));
+}
+
+async function confirmDeleteAccount() {
+  if (
+    !confirm(
+      "Delete your account permanently? All profile data will be removed and cannot be recovered."
+    )
+  ) {
+    return;
+  }
+  const uid = getProfileUid();
+  const pass = document.getElementById("deleteAccountPass")?.value || "";
+  try {
+    await window.mosAuth.deleteAccount(pass);
+    clearLocalUserData(uid);
+    closeSettingsEditor();
+    await logout();
+    setAuthError("Your account was deleted.", []);
+  } catch (err) {
+    setProfileMsg(window.mosAuth.mapError(err), true);
+  }
+}
+
 async function saveProfileName() {
-  const firstName = stripSpacesFromFirstName(
-    document.getElementById("profileFirstName")?.value.trim()
-  );
-  const lastName = document.getElementById("profileLastName")?.value.trim();
+  const rawFirst = document.getElementById("profileFirstName")?.value.trim() || "";
+  const rawLast = document.getElementById("profileLastName")?.value.trim() || "";
+  const { firstName, lastName } = normalizeNameFields(rawFirst, rawLast);
   const firstErr = validateFirstName(firstName);
   if (firstErr) return setProfileMsg(firstErr, true);
   if (!lastName) return setProfileMsg("Enter last name.", true);
@@ -1630,7 +1726,7 @@ async function saveProfileName() {
     updateMenuAvatar();
     renderSettingsList();
     setProfileMsg("Name updated.");
-    closeSettingsEditor();
+    cancelNameEdit();
   } catch (err) {
     setProfileMsg(window.mosAuth.mapError(err), true);
   }
@@ -1863,6 +1959,8 @@ Object.assign(window, {
   toggleSettingsPanel,
   toggleSettingsEditor,
   closeSettingsEditor,
+  cancelNameEdit,
+  confirmDeleteAccount,
   pickAvatarGallery,
   pickAvatarCamera,
   toggleEmojiPicker,

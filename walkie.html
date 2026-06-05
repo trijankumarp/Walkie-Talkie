@@ -702,6 +702,62 @@
       background: var(--accent-soft);
       border-bottom-color: transparent;
     }
+    .settings-row-danger .settings-row-label { color: var(--red); }
+    .settings-row-danger .settings-row-icon { color: var(--red); }
+    .name-edit-panel { padding: 4px 0 8px; }
+    .name-visibility {
+      margin: 14px 0 16px;
+      padding: 12px 0 0;
+      border-top: 1px solid var(--border);
+    }
+    .name-visibility-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0 0 6px;
+      color: var(--text);
+    }
+    .name-visibility-text {
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--text-muted);
+      margin: 0;
+    }
+    .name-edit-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .btn-text {
+      background: none;
+      border: none;
+      color: #3b82f6;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      padding: 8px 12px;
+      font-family: inherit;
+    }
+    html[data-theme="dark"] .btn-text { color: #60a5fa; }
+    .name-save-btn {
+      width: auto;
+      min-width: 88px;
+      margin: 0;
+      border-radius: 20px;
+    }
+    .delete-account-warn {
+      font-size: 13px;
+      color: var(--red);
+      line-height: 1.45;
+      margin: 0 0 12px;
+    }
+    .btn-danger {
+      background: var(--red);
+      color: #fff;
+      border: none;
+    }
+    .btn-danger:hover { opacity: 0.9; }
     .settings-editor-title {
       font-size: 14px;
       font-weight: 600;
@@ -1237,6 +1293,13 @@
             <span class="settings-row-body">
               <span class="settings-row-label">Biometric login</span>
               <span class="settings-row-value" id="settingsBioValue">Off</span>
+            </span>
+          </button>
+          <button type="button" class="settings-row settings-row-danger" data-settings-key="delete" onclick="toggleSettingsEditor('delete')">
+            <span class="settings-row-icon"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></span>
+            <span class="settings-row-body">
+              <span class="settings-row-label">Delete account</span>
+              <span class="settings-row-value">Permanently remove</span>
             </span>
           </button>
         </div>

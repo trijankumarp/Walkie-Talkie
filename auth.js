@@ -18,6 +18,8 @@ import {
   linkWithCredential,
   signInWithPopup,
   GoogleAuthProvider,
+  reauthenticateWithPopup,
+  deleteUser,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
@@ -272,6 +274,26 @@ async function requestPhoneChangeOtp(e164Phone, currentPassword) {
   return { otp, phone: e164Phone };
 }
 
+function userHasPasswordProvider(user) {
+  return user?.providerData?.some((p) => p.providerId === "password");
+}
+
+async function deleteAccount(currentPassword) {
+  if (!auth?.currentUser) throw new Error("Not signed in.");
+  const user = auth.currentUser;
+  if (userHasPasswordProvider(user)) {
+    if (!currentPassword) {
+      throw Object.assign(new Error("Enter your password to delete this account."), {
+        code: "auth/invalid-password"
+      });
+    }
+    await reauthWithPassword(currentPassword);
+  } else {
+    await reauthenticateWithPopup(user, new GoogleAuthProvider());
+  }
+  await deleteUser(user);
+}
+
 init();
 
 window.mosAuth = {
@@ -292,7 +314,9 @@ window.mosAuth = {
   confirmEmailChangeOtp,
   sendPhoneOtp,
   confirmPhoneOtp,
-  requestPhoneChangeOtp
+  requestPhoneChangeOtp,
+  deleteAccount,
+  userHasPasswordProvider
 };
 
 window.dispatchEvent(new Event("mosAuthReady"));
