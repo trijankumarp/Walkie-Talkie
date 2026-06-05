@@ -388,6 +388,7 @@ function enterApp(user) {
     email: user.email
   };
   loadChannels();
+  loadFriends();
   loadBtDevices();
   loadSelectedWifi();
   document.getElementById("loginScreen").style.display = "none";
