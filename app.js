@@ -29,6 +29,9 @@ const USER_SETTINGS_PATH = "userSettings";
 const PUBLIC_USERS_PATH = "publicUsers";
 const PUBLIC_USERS_BY_UID_PATH = "publicUsersByUid";
 const PUBLIC_USERS_BY_EMAIL_PATH = "publicUsersByEmail";
+const FRIEND_REQUESTS_PATH = "friendRequests";
+const FRIEND_REQUEST_SENT_PATH = "friendRequestSent";
+const USER_FRIENDS_PATH = "userFriends";
 const RTDB_KEY_DOT = ",";
 const CHANNEL_STALE_MS = 5 * 60 * 1000;
 const THEME_KEY = "walkie_theme_v1";
@@ -111,6 +114,14 @@ let friendSearchResults = [];
 let friendSearchLoading = false;
 let friendSearchError = "";
 let friendSearchTimer = null;
+let incomingFriendRequests = [];
+let outgoingFriendRequests = [];
+let friendRequestsRtdbRef = null;
+let friendSentRtdbRef = null;
+let userFriendsRtdbRef = null;
+let friendRequestsReady = false;
+let lastFriendRequestCount = 0;
+let friendToastTimer = null;
 let selectedBtId = null;
 let savedBtDevices = [];
 let nearbyChannels = [];
@@ -1212,14 +1223,144 @@ function friendDisplayLabel(f) {
   return f.label || "Friend";
 }
 
+function friendRecordFromProfile(profile) {
+  return {
+    uid: profile.uid || "",
+    userId: profile.userId || "",
+    displayName: profile.displayName || "",
+    email: profile.emailLower || profile.email || "",
+    label: friendDisplayLabel(profile)
+  };
+}
+
+function friendRecordFromRequest(req, prefix) {
+  return {
+    uid: req[`${prefix}Uid`] || "",
+    userId: req[`${prefix}UserId`] || "",
+    displayName: req[`${prefix}DisplayName`] || "",
+    email: req[`${prefix}Email`] || "",
+    label: req[`${prefix}DisplayName`] || req[`${prefix}UserId`] || "User"
+  };
+}
+
 function isFriendAlready(profile) {
+  const uid = profile?.uid;
   return friends.some(
     (f) =>
-      (profile.uid && f.uid === profile.uid) ||
+      (uid && f.uid === uid) ||
       (profile.userId && f.userId === profile.userId) ||
       (profile.email && f.email === profile.email) ||
+      (profile.emailLower && f.email === profile.emailLower) ||
       (profile.label && f.label?.toLowerCase() === profile.label.toLowerCase())
   );
+}
+
+function isOutgoingRequestPending(uid) {
+  return outgoingFriendRequests.some((r) => r.toUid === uid);
+}
+
+function isIncomingRequestPending(uid) {
+  return incomingFriendRequests.some((r) => r.fromUid === uid);
+}
+
+function updateFriendRequestBadge() {
+  const btn = document.getElementById("btnFriendAction");
+  if (!btn) return;
+  let badge = btn.querySelector(".friend-req-badge");
+  const count = incomingFriendRequests.length;
+  if (!count) {
+    badge?.remove();
+    return;
+  }
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = "friend-req-badge";
+    btn.appendChild(badge);
+  }
+  badge.textContent = count > 9 ? "9+" : String(count);
+}
+
+function showFriendRequestToast(message) {
+  const el = document.getElementById("friendRequestToast");
+  if (!el) return;
+  el.textContent = message;
+  el.classList.add("show");
+  clearTimeout(friendToastTimer);
+  friendToastTimer = setTimeout(() => el.classList.remove("show"), 6000);
+  if (navigator.vibrate) navigator.vibrate(80);
+}
+
+function parseFriendRequestsSnapshot(snap, fieldPrefix) {
+  const list = [];
+  snap.forEach((child) => {
+    const data = child.val();
+    if (!data) return;
+    list.push({ ...data, id: child.key });
+  });
+  list.sort((a, b) => Number(b.sentAt || 0) - Number(a.sentAt || 0));
+  return list;
+}
+
+function stopFriendListeners() {
+  if (friendRequestsRtdbRef) {
+    off(friendRequestsRtdbRef);
+    friendRequestsRtdbRef = null;
+  }
+  if (friendSentRtdbRef) {
+    off(friendSentRtdbRef);
+    friendSentRtdbRef = null;
+  }
+  if (userFriendsRtdbRef) {
+    off(userFriendsRtdbRef);
+    userFriendsRtdbRef = null;
+  }
+  incomingFriendRequests = [];
+  outgoingFriendRequests = [];
+  friendRequestsReady = false;
+  lastFriendRequestCount = 0;
+  updateFriendRequestBadge();
+}
+
+function startFriendListeners(uid) {
+  const rtdb = getRealtimeDb();
+  if (!rtdb || !uid) return;
+  stopFriendListeners();
+
+  friendRequestsRtdbRef = ref(rtdb, `${FRIEND_REQUESTS_PATH}/${uid}`);
+  onValue(friendRequestsRtdbRef, (snap) => {
+    if (!isLoggedIn || loggedInUser?.uid !== uid) return;
+    const incoming = parseFriendRequestsSnapshot(snap);
+    if (friendRequestsReady && incoming.length > lastFriendRequestCount) {
+      const newest = incoming[0];
+      const name = newest?.fromDisplayName || newest?.fromUserId || "Someone";
+      showFriendRequestToast(`${name} sent you a friend request`);
+    }
+    friendRequestsReady = true;
+    lastFriendRequestCount = incoming.length;
+    incomingFriendRequests = incoming;
+    updateFriendRequestBadge();
+    if (friendPanelOpen) renderFriends();
+  });
+
+  friendSentRtdbRef = ref(rtdb, `${FRIEND_REQUEST_SENT_PATH}/${uid}`);
+  onValue(friendSentRtdbRef, (snap) => {
+    if (!isLoggedIn || loggedInUser?.uid !== uid) return;
+    outgoingFriendRequests = parseFriendRequestsSnapshot(snap);
+    if (friendPanelOpen) renderFriends();
+  });
+
+  userFriendsRtdbRef = ref(rtdb, `${USER_FRIENDS_PATH}/${uid}`);
+  onValue(userFriendsRtdbRef, (snap) => {
+    if (!isLoggedIn || loggedInUser?.uid !== uid) return;
+    const list = [];
+    snap.forEach((child) => {
+      const data = child.val();
+      if (data) list.push(data);
+    });
+    friends = list;
+    saveFriends();
+    if (friendPanelOpen) renderFriends();
+  });
 }
 
 function ensureUserIdForPublish(uid) {
@@ -1356,20 +1497,81 @@ function renderFriendSearchItem(container, profile) {
   const name = profile.displayName || profile.userId || "User";
   const sub = profile.userId ? `@${profile.userId}` : profile.emailLower || "";
   const already = isFriendAlready(profile);
+  const pendingOut = isOutgoingRequestPending(profile.uid);
+  const pendingIn = isIncomingRequestPending(profile.uid);
+  let actionHtml = "";
+  if (already) {
+    actionHtml = `<span class="friend-status-pill">Friends</span>`;
+  } else if (pendingOut) {
+    actionHtml = `<span class="friend-status-pill">Sent</span>`;
+  } else if (pendingIn) {
+    actionHtml = `<button type="button" class="channel-join-btn" data-accept="${escapeHtml(profile.uid)}">Accept</button>`;
+  } else {
+    actionHtml = `<button type="button" class="add-symbol" title="Send friend request" aria-label="Send friend request">+</button>`;
+  }
   div.innerHTML = `
     <div class="channel-info">
       <span class="channel-name">${escapeHtml(name)}</span>
       ${sub ? `<span class="channel-meta">${escapeHtml(sub)}</span>` : ""}
     </div>
-    <button type="button" class="add-symbol" title="${already ? "Already added" : "Add friend"}" ${already ? "disabled" : ""} aria-label="Add friend">+</button>
+    ${actionHtml}
   `;
-  if (!already) {
+  if (!already && !pendingOut && !pendingIn) {
     div.querySelector(".add-symbol")?.addEventListener("click", (e) => {
       e.stopPropagation();
-      addFriendFromSearch(profile);
+      void sendFriendRequest(profile);
     });
-    div.addEventListener("click", () => addFriendFromSearch(profile));
+    div.addEventListener("click", () => void sendFriendRequest(profile));
   }
+  div.querySelector("[data-accept]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void acceptFriendRequest(profile.uid);
+  });
+  container.appendChild(div);
+}
+
+function renderIncomingRequestItem(container, req) {
+  const div = document.createElement("div");
+  div.className = "channel-item";
+  const name = req.fromDisplayName || req.fromUserId || "User";
+  const sub = req.fromUserId ? `@${req.fromUserId}` : req.fromEmail || "";
+  div.innerHTML = `
+    <div class="channel-info">
+      <span class="channel-name">${escapeHtml(name)}</span>
+      ${sub ? `<span class="channel-meta">${escapeHtml(sub)}</span>` : ""}
+    </div>
+    <div class="friend-req-actions">
+      <button type="button" class="channel-join-btn" data-accept="${escapeHtml(req.fromUid)}">Accept</button>
+      <button type="button" class="delete-btn" title="Decline" data-decline="${escapeHtml(req.fromUid)}">✕</button>
+    </div>
+  `;
+  div.querySelector("[data-accept]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void acceptFriendRequest(req.fromUid);
+  });
+  div.querySelector("[data-decline]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void declineFriendRequest(req.fromUid);
+  });
+  container.appendChild(div);
+}
+
+function renderOutgoingRequestItem(container, req) {
+  const div = document.createElement("div");
+  div.className = "channel-item";
+  const name = req.toDisplayName || req.toUserId || "User";
+  const sub = req.toUserId ? `@${req.toUserId}` : "";
+  div.innerHTML = `
+    <div class="channel-info">
+      <span class="channel-name">${escapeHtml(name)}</span>
+      ${sub ? `<span class="channel-meta">${escapeHtml(sub)} · Pending</span>` : `<span class="channel-meta">Pending</span>`}
+    </div>
+    <button type="button" class="delete-btn" title="Cancel request" data-cancel="${escapeHtml(req.toUid)}">✕</button>
+  `;
+  div.querySelector("[data-cancel]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void cancelFriendRequest(req.toUid);
+  });
   container.appendChild(div);
 }
 
@@ -1380,6 +1582,16 @@ function renderFriends() {
   const query = getFriendSearchQuery();
   const visibleFriends = friends.filter((f) => friendMatchesSearch(f, query));
   const isSearching = query.length >= 2;
+
+  if (incomingFriendRequests.length && !isSearching) {
+    appendFriendSectionLabel(container, `Requests (${incomingFriendRequests.length})`);
+    incomingFriendRequests.forEach((req) => renderIncomingRequestItem(container, req));
+  }
+
+  if (outgoingFriendRequests.length && !isSearching) {
+    appendFriendSectionLabel(container, "Sent");
+    outgoingFriendRequests.forEach((req) => renderOutgoingRequestItem(container, req));
+  }
 
   if (isSearching) {
     if (friendSearchLoading) {
@@ -1412,9 +1624,9 @@ function renderFriends() {
       `;
       container.appendChild(div);
     });
-  } else if (!isSearching) {
+  } else if (!isSearching && !incomingFriendRequests.length && !outgoingFriendRequests.length) {
     container.innerHTML =
-      '<div class="channel-empty">No friends yet.<br>Search by @User ID, email, or name above.</div>';
+      '<div class="channel-empty">No friends yet.<br>Search and send a request — they get it in seconds.</div>';
   }
 }
 
@@ -1522,27 +1734,134 @@ async function runFriendSearch(query) {
   if (friendPanelOpen) renderFriends();
 }
 
-function addFriendFromSearch(profile) {
-  if (!profile) return;
-  if (profile.uid && profile.uid === loggedInUser?.uid) {
-    return setFriendMsg("You cannot add yourself.", true);
+async function sendFriendRequest(profile) {
+  if (!profile?.uid) return setFriendMsg("User not found.", true);
+  if (profile.uid === loggedInUser?.uid) return setFriendMsg("You cannot add yourself.", true);
+  if (isFriendAlready(profile)) return setFriendMsg("Already friends.", true);
+  if (isOutgoingRequestPending(profile.uid)) return setFriendMsg("Request already sent.", true);
+  if (isIncomingRequestPending(profile.uid)) {
+    return acceptFriendRequest(profile.uid);
   }
-  if (isFriendAlready(profile)) {
-    return setFriendMsg("Friend already in list.", true);
+
+  const rtdb = getRealtimeDb();
+  if (!rtdb) {
+    return setFriendMsg("Internet + Firebase Database required for friend requests.", true);
   }
-  friends.push({
-    uid: profile.uid || "",
-    userId: profile.userId || "",
-    displayName: profile.displayName || "",
-    email: profile.emailLower || "",
-    label: friendDisplayLabel(profile)
-  });
-  saveFriends();
-  renderFriends();
-  setFriendMsg(`${profile.displayName || profile.userId || "Friend"} added.`);
+
+  await publishMyPublicProfile();
+  const myUid = loggedInUser?.uid;
+  const payload = buildPublicProfilePayload(myUid);
+  if (!payload) return setFriendMsg("Set your User ID in Settings first.", true);
+
+  const request = {
+    fromUid: myUid,
+    fromUserId: payload.userId,
+    fromDisplayName: payload.displayName,
+    fromEmail: payload.emailLower,
+    toUid: profile.uid,
+    toUserId: profile.userId || "",
+    toDisplayName: profile.displayName || "",
+    sentAt: Date.now(),
+    status: "pending"
+  };
+
+  try {
+    await set(ref(rtdb, `${FRIEND_REQUESTS_PATH}/${profile.uid}/${myUid}`), request);
+    await set(ref(rtdb, `${FRIEND_REQUEST_SENT_PATH}/${myUid}/${profile.uid}`), {
+      toUid: profile.uid,
+      toUserId: profile.userId || "",
+      toDisplayName: profile.displayName || "",
+      sentAt: request.sentAt,
+      status: "pending"
+    });
+    setFriendMsg(`Request sent to ${profile.displayName || profile.userId}.`);
+    renderFriends();
+  } catch (err) {
+    console.warn("Send friend request failed", err);
+    setFriendMsg(mapSyncError(err), true);
+  }
 }
 
-function removeFriend(index) {
+async function acceptFriendRequest(fromUid) {
+  if (!fromUid) return;
+  const rtdb = getRealtimeDb();
+  const myUid = loggedInUser?.uid;
+  if (!rtdb || !myUid) return;
+
+  const req =
+    incomingFriendRequests.find((r) => r.fromUid === fromUid) ||
+    (await get(ref(rtdb, `${FRIEND_REQUESTS_PATH}/${myUid}/${fromUid}`))).val();
+  if (!req) return setFriendMsg("Request not found.", true);
+
+  const myPayload = buildPublicProfilePayload(myUid);
+  const myFriend = myPayload
+    ? friendRecordFromProfile({
+        uid: myUid,
+        userId: myPayload.userId,
+        displayName: myPayload.displayName,
+        emailLower: myPayload.emailLower
+      })
+    : { uid: myUid, displayName: loggedInUser?.name || "You", label: loggedInUser?.name || "You" };
+  const theirFriend = friendRecordFromRequest(req, "from");
+
+  try {
+    await set(ref(rtdb, `${USER_FRIENDS_PATH}/${myUid}/${fromUid}`), theirFriend);
+    await set(ref(rtdb, `${USER_FRIENDS_PATH}/${fromUid}/${myUid}`), myFriend);
+    await set(ref(rtdb, `${FRIEND_REQUESTS_PATH}/${myUid}/${fromUid}`), null);
+    await set(ref(rtdb, `${FRIEND_REQUEST_SENT_PATH}/${fromUid}/${myUid}`), null);
+    setFriendMsg(`${theirFriend.displayName || theirFriend.userId || "Friend"} added.`);
+    renderFriends();
+  } catch (err) {
+    console.warn("Accept friend request failed", err);
+    setFriendMsg(mapSyncError(err), true);
+  }
+}
+
+async function declineFriendRequest(fromUid) {
+  const rtdb = getRealtimeDb();
+  const myUid = loggedInUser?.uid;
+  if (!rtdb || !myUid || !fromUid) return;
+  try {
+    await set(ref(rtdb, `${FRIEND_REQUESTS_PATH}/${myUid}/${fromUid}`), null);
+    await set(ref(rtdb, `${FRIEND_REQUEST_SENT_PATH}/${fromUid}/${myUid}`), null);
+    setFriendMsg("Request declined.");
+    renderFriends();
+  } catch (err) {
+    setFriendMsg(mapSyncError(err), true);
+  }
+}
+
+async function cancelFriendRequest(toUid) {
+  const rtdb = getRealtimeDb();
+  const myUid = loggedInUser?.uid;
+  if (!rtdb || !myUid || !toUid) return;
+  try {
+    await set(ref(rtdb, `${FRIEND_REQUEST_SENT_PATH}/${myUid}/${toUid}`), null);
+    await set(ref(rtdb, `${FRIEND_REQUESTS_PATH}/${toUid}/${myUid}`), null);
+    setFriendMsg("Request cancelled.");
+    renderFriends();
+  } catch (err) {
+    setFriendMsg(mapSyncError(err), true);
+  }
+}
+
+function addFriendFromSearch(profile) {
+  void sendFriendRequest(profile);
+}
+
+async function removeFriend(index) {
+  const f = friends[index];
+  if (!f) return;
+  const rtdb = getRealtimeDb();
+  const myUid = loggedInUser?.uid;
+  if (rtdb && myUid && f.uid) {
+    try {
+      await set(ref(rtdb, `${USER_FRIENDS_PATH}/${myUid}/${f.uid}`), null);
+      await set(ref(rtdb, `${USER_FRIENDS_PATH}/${f.uid}/${myUid}`), null);
+    } catch (err) {
+      console.warn("Remove friend cloud failed", err);
+    }
+  }
   friends.splice(index, 1);
   saveFriends();
   renderFriends();
@@ -1553,7 +1872,13 @@ function onFriendSearchKeydown(e) {
   if (e.key !== "Enter") return;
   e.preventDefault();
   const first = friendSearchResults[0];
-  if (first && !isFriendAlready(first)) addFriendFromSearch(first);
+  if (!first || isFriendAlready(first)) return;
+  if (isOutgoingRequestPending(first.uid)) return;
+  if (isIncomingRequestPending(first.uid)) {
+    void acceptFriendRequest(first.uid);
+    return;
+  }
+  void sendFriendRequest(first);
 }
 
 function setProfileMsg(msg, isError) {
@@ -1875,6 +2200,7 @@ async function enterApp(user) {
   renderChannels();
   await loadChannelsFromCloud();
   startUserChannelsListener(uid);
+  startFriendListeners(uid);
   refreshStatusBar();
   renderChannels();
   updatePttHint();
@@ -3160,6 +3486,7 @@ async function logout() {
   channels = [];
   currentChannel = null;
   stopChannelWifiSync();
+  stopFriendListeners();
   window.offlineTalk?.cleanup?.();
   stopTalk();
   closeMenu();
@@ -3269,6 +3596,10 @@ Object.assign(window, {
   onBiometricToggle,
   searchFriends,
   onFriendSearchKeydown,
+  sendFriendRequest,
+  acceptFriendRequest,
+  declineFriendRequest,
+  cancelFriendRequest,
   addFriendFromSearch,
   removeFriend,
   refreshWifiList,
