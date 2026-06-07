@@ -1194,8 +1194,18 @@ function saveFriends() {
 function setFriendMsg(msg, isError) {
   const el = document.getElementById("friendMsg");
   if (!el) return;
-  el.textContent = msg || "";
+  if (msg && /<[a-z][\s\S]*>/i.test(msg)) {
+    el.innerHTML = msg;
+  } else {
+    el.textContent = msg || "";
+  }
   el.className = "profile-msg" + (msg ? (isError ? " err" : " ok") : "");
+}
+
+function mapFriendRulesError() {
+  return (
+    'Friend request blocked by Firebase rules. Open <a href="https://console.firebase.google.com/project/walkietalkie-mos/database/walkietalkie-mos-default-rtdb/rules" target="_blank" rel="noopener">Realtime Database → Rules</a>, paste the full <code>database.rules.json</code> from this project, click <strong>Publish</strong>, then logout &amp; login.'
+  );
 }
 
 function encodeRtdbKey(value) {
@@ -1778,7 +1788,10 @@ async function sendFriendRequest(profile) {
     renderFriends();
   } catch (err) {
     console.warn("Send friend request failed", err);
-    setFriendMsg(mapSyncError(err), true);
+    const msg = String(err?.message || "");
+    const isRules =
+      err?.code === "permission-denied" || msg.includes("PERMISSION_DENIED");
+    setFriendMsg(isRules ? mapFriendRulesError() : mapSyncError(err), true);
   }
 }
 
