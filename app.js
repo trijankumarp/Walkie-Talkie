@@ -349,11 +349,11 @@ function updatePttHint() {
   const hint = document.getElementById("pttHint");
   if (!hint) return;
   const friendLabel = getActiveFriendLabel();
-  if (friendLabel) {
+  if (friendLabel && window.friendTalk?.isInCall?.()) {
     const connected = window.friendTalk?.isActive?.();
     hint.textContent = connected
-      ? `Hold to talk with ${friendLabel}`
-      : `Connecting to ${friendLabel}… tap Talk if needed`;
+      ? `Voice call with ${friendLabel}`
+      : `Calling ${friendLabel}…`;
     return;
   }
   const label = getActiveChannelTalkLabel();
@@ -1248,7 +1248,7 @@ function isPermissionDenied(err) {
 
 function mapFriendRulesError() {
   return (
-    'Talk / Chat blocked — Firebase rules not published. Open <a href="https://console.firebase.google.com/project/walkietalkie-mos/database/walkietalkie-mos-default-rtdb/rules" target="_blank" rel="noopener">Realtime Database → Rules</a>, delete old rules, paste <strong>full</strong> <code>database.rules.json</code> (must include <code>friendChats</code> + <code>friendTalk</code>), click <strong>Publish</strong>, then logout &amp; login on both phones.'
+    'Talk / Chat blocked — Firebase rules not published. Open <a href="https://console.firebase.google.com/project/walkietalkie-mos/database/walkietalkie-mos-default-rtdb/rules" target="_blank" rel="noopener">Realtime Database → Rules</a>, delete old rules, paste <strong>full</strong> <code>database.rules.json</code> (must include <code>friendChats</code>, <code>friendTalk</code>, <code>friendIncomingCalls</code>), click <strong>Publish</strong>, then logout &amp; login on both phones.'
   );
 }
 
@@ -1313,8 +1313,12 @@ function buildMyFriendRecord() {
   });
 }
 
-let pendingFriendCallIndex = null;
 let friendPhoneSyncTimer = null;
+let pendingIncomingCallUid = null;
+let voiceCallTimerInterval = null;
+let voiceCallStartedAt = 0;
+let voiceCallRingInterval = null;
+let friendTalkUiReady = false;
 
 async function syncMyPhoneToFriends() {
   const myUid = loggedInUser?.uid;
@@ -1346,53 +1350,241 @@ function scheduleSyncMyPhoneToFriends() {
   }, 400);
 }
 
-function showFriendCallOptions(index) {
-  const f = friends[index];
-  if (!f) return;
-  pendingFriendCallIndex = index;
-  const overlay = document.getElementById("friendCallOverlay");
-  const title = document.getElementById("friendCallTitle");
-  const phoneBtn = document.getElementById("friendCallPhone");
-  const waBtn = document.getElementById("friendCallWhatsApp");
-  const hint = document.getElementById("friendCallHint");
-  const label = friendDisplayLabel(f);
-  if (title) title.textContent = `Call ${label}`;
-  const phone = f.phoneE164;
-  const hasPhone = !!(phone && String(phone).replace(/\D/g, "").length >= 10);
-  if (phoneBtn) phoneBtn.style.display = hasPhone ? "" : "none";
-  if (waBtn) waBtn.style.display = hasPhone ? "" : "none";
-  if (hint) {
-    hint.textContent = hasPhone
-      ? "Phone / WhatsApp — normal call. Walkie — in-app Hold to talk."
-      : "Friend phone number ledu. Walkie use cheyandi, leda friend Settings lo phone add cheyamandi.";
+function friendInitial(name) {
+  const ch = (name || "?").trim().charAt(0);
+  return ch ? ch.toUpperCase() : "?";
+}
+
+function findFriendByUid(uid) {
+  return friends.find((f) => f.uid === uid) || null;
+}
+
+function stopVoiceCallRing() {
+  if (voiceCallRingInterval) clearInterval(voiceCallRingInterval);
+  voiceCallRingInterval = null;
+  if (navigator.vibrate) navigator.vibrate(0);
+}
+
+function startVoiceCallRing() {
+  stopVoiceCallRing();
+  if (navigator.vibrate) navigator.vibrate([500, 250, 500, 250, 500]);
+  voiceCallRingInterval = setInterval(() => {
+    if (navigator.vibrate) navigator.vibrate([500, 250, 500]);
+  }, 2800);
+}
+
+function stopVoiceCallTimer() {
+  if (voiceCallTimerInterval) clearInterval(voiceCallTimerInterval);
+  voiceCallTimerInterval = null;
+  voiceCallStartedAt = 0;
+  const el = document.getElementById("voiceCallTimer");
+  if (el) el.textContent = "";
+}
+
+function formatCallDuration(ms) {
+  const sec = Math.floor(ms / 1000);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function startVoiceCallTimer() {
+  stopVoiceCallTimer();
+  voiceCallStartedAt = Date.now();
+  const el = document.getElementById("voiceCallTimer");
+  const tick = () => {
+    if (el) el.textContent = formatCallDuration(Date.now() - voiceCallStartedAt);
+  };
+  tick();
+  voiceCallTimerInterval = setInterval(tick, 1000);
+}
+
+function setVoiceCallPanel(mode, name) {
+  const screen = document.getElementById("voiceCallScreen");
+  const avatar = document.getElementById("voiceCallAvatar");
+  const nameEl = document.getElementById("voiceCallName");
+  const statusEl = document.getElementById("voiceCallStatus");
+  const outgoing = document.getElementById("voiceCallOutgoingActions");
+  const incoming = document.getElementById("voiceCallIncomingActions");
+  const active = document.getElementById("voiceCallActiveActions");
+  if (!screen) return;
+
+  if (mode === "hidden") {
+    screen.classList.remove("open");
+    screen.setAttribute("aria-hidden", "true");
+    if (outgoing) outgoing.style.display = "none";
+    if (incoming) incoming.style.display = "none";
+    if (active) active.style.display = "none";
+    return;
   }
-  overlay?.classList.add("open");
+
+  screen.classList.add("open");
+  screen.setAttribute("aria-hidden", "false");
+  if (avatar) avatar.textContent = friendInitial(name);
+  if (nameEl) nameEl.textContent = name || "Friend";
+  if (outgoing) outgoing.style.display = mode === "outgoing" ? "" : "none";
+  if (incoming) incoming.style.display = mode === "incoming" ? "" : "none";
+  if (active) active.style.display = mode === "active" ? "" : "none";
+  if (statusEl) {
+    statusEl.textContent =
+      mode === "outgoing"
+        ? "Calling…"
+        : mode === "incoming"
+          ? "Incoming voice call"
+          : mode === "connecting"
+            ? "Connecting…"
+            : mode === "active"
+              ? "On call"
+              : "";
+  }
 }
 
-function closeFriendCallOptions() {
-  document.getElementById("friendCallOverlay")?.classList.remove("open");
-  pendingFriendCallIndex = null;
+function updateVoiceCallMuteUi(muted) {
+  const btn = document.getElementById("voiceCallMuteBtn");
+  const label = document.getElementById("voiceCallMuteLabel");
+  if (btn) btn.classList.toggle("on", !!muted);
+  if (label) label.textContent = muted ? "Unmute" : "Mute";
 }
 
-function pickFriendPhoneCall() {
-  const f = friends[pendingFriendCallIndex];
-  if (!f?.phoneE164) return setFriendMsg("Friend phone number not available.", true);
-  closeFriendCallOptions();
-  window.location.href = `tel:${f.phoneE164}`;
+function handleFriendTalkUi(event, meta = {}) {
+  if (event === "outgoing") {
+    const f = findFriendByUid(meta.friendUid) || { displayName: meta.friendName };
+    activeFriend = f.uid ? f : { uid: meta.friendUid, displayName: meta.friendName, label: meta.friendName };
+    setVoiceCallPanel("outgoing", meta.friendName || friendDisplayLabel(f));
+    stopVoiceCallRing();
+    stopVoiceCallTimer();
+    refreshStatusBar();
+    renderFriends();
+    return;
+  }
+  if (event === "incoming") {
+    pendingIncomingCallUid = meta.fromUid;
+    const f = findFriendByUid(meta.fromUid);
+    activeFriend = f || { uid: meta.fromUid, displayName: meta.fromName, label: meta.fromName };
+    setVoiceCallPanel("incoming", meta.fromName || "Friend");
+    startVoiceCallRing();
+    showFriendRequestToast(`${meta.fromName || "Friend"} is calling…`);
+    return;
+  }
+  if (event === "connecting") {
+    stopVoiceCallRing();
+    const label = meta.friendName || getActiveFriendLabel() || "Friend";
+    setVoiceCallPanel("connecting", label);
+    refreshStatusBar();
+    return;
+  }
+  if (event === "active") {
+    stopVoiceCallRing();
+    pendingIncomingCallUid = null;
+    const label = getActiveFriendLabel() || "Friend";
+    setVoiceCallPanel("active", label);
+    updateVoiceCallMuteUi(false);
+    startVoiceCallTimer();
+    refreshStatusBar();
+    updatePttHint();
+    renderFriends();
+    return;
+  }
+  if (event === "mute") {
+    updateVoiceCallMuteUi(!!meta.muted);
+    return;
+  }
+  if (event === "ended") {
+    stopVoiceCallRing();
+    stopVoiceCallTimer();
+    setVoiceCallPanel("hidden");
+    pendingIncomingCallUid = null;
+    activeFriend = null;
+    refreshStatusBar();
+    updatePttHint();
+    renderFriends();
+    if (meta.reason === "declined") setFriendMsg("Call declined.");
+    else if (meta.reason === "cancelled") setFriendMsg("Call cancelled.");
+    else if (meta.reason === "lost") setFriendMsg("Call disconnected.", true);
+    else if (meta.reason !== "ended") setFriendMsg("Call ended.");
+  }
 }
 
-function pickFriendWhatsAppCall() {
-  const f = friends[pendingFriendCallIndex];
-  if (!f?.phoneE164) return setFriendMsg("Friend phone number not available.", true);
-  closeFriendCallOptions();
-  const digits = String(f.phoneE164).replace(/\D/g, "");
-  window.open(`https://wa.me/${digits}`, "_blank", "noopener");
+function setupFriendTalkUi() {
+  if (friendTalkUiReady) return;
+  friendTalkUiReady = true;
+  window.friendTalk?.setUiCallback?.(handleFriendTalkUi);
+  window.friendTalk?.setStatusCallback?.((msg, isErr) => {
+    if (!msg) return;
+    const text =
+      isErr && (String(msg).includes("PERMISSION_DENIED") || String(msg).includes("permission"))
+        ? mapFriendRulesError()
+        : msg;
+    setFriendMsg(text, isErr);
+    const statusEl = document.getElementById("voiceCallStatus");
+    if (statusEl && document.getElementById("voiceCallScreen")?.classList.contains("open")) {
+      statusEl.textContent = text;
+    }
+    refreshStatusBar();
+    updatePttHint();
+    renderFriends();
+  });
 }
 
-function pickFriendWalkieCall() {
-  const idx = pendingFriendCallIndex;
-  closeFriendCallOptions();
-  if (idx !== null) void startFriendTalk(idx);
+async function startFriendVoiceCall(index) {
+  const f = friends[index];
+  if (!f?.uid) return setFriendMsg("Friend not available.", true);
+  if (window.friendTalk?.isInCall?.()) {
+    if (activeFriend?.uid === f.uid) {
+      await endVoiceCall();
+      return;
+    }
+    return setFriendMsg("Already on a call.", true);
+  }
+  if (!navigator.onLine) {
+    return setFriendMsg("Voice call needs internet.", true);
+  }
+  setupFriendTalkUi();
+  activeFriend = f;
+  const ok = await window.friendTalk?.startOutgoingCall?.(
+    loggedInUser.uid,
+    f.uid,
+    friendDisplayLabel(f)
+  );
+  if (ok) {
+    closeMenu();
+    renderFriends();
+  }
+}
+
+async function acceptIncomingVoiceCall() {
+  if (!pendingIncomingCallUid) return;
+  setupFriendTalkUi();
+  const f = findFriendByUid(pendingIncomingCallUid);
+  activeFriend = f || { uid: pendingIncomingCallUid, displayName: "Friend", label: "Friend" };
+  await window.friendTalk?.acceptCall?.(
+    pendingIncomingCallUid,
+    f ? friendDisplayLabel(f) : "Friend",
+    loggedInUser?.uid
+  );
+}
+
+async function declineIncomingVoiceCall() {
+  if (!pendingIncomingCallUid) return;
+  await window.friendTalk?.rejectCall?.(pendingIncomingCallUid, loggedInUser?.uid);
+  stopVoiceCallRing();
+  setVoiceCallPanel("hidden");
+  pendingIncomingCallUid = null;
+  activeFriend = null;
+  setFriendMsg("Call declined.");
+}
+
+async function cancelVoiceCall() {
+  await window.friendTalk?.cancelOutgoing?.();
+}
+
+async function endVoiceCall() {
+  await window.friendTalk?.endCall?.("ended");
+}
+
+function toggleVoiceCallMute() {
+  const muted = window.friendTalk?.toggleMute?.();
+  updateVoiceCallMuteUi(!!muted);
 }
 
 function friendRecordFromRequest(req, prefix) {
@@ -1510,6 +1702,9 @@ function startFriendListeners(uid) {
     outgoingFriendRequests = parseFriendRequestsSnapshot(snap);
     if (friendPanelOpen) renderFriends();
   });
+
+  setupFriendTalkUi();
+  window.friendTalk?.startIncomingListener?.(uid);
 
   userFriendsRtdbRef = ref(rtdb, `${USER_FRIENDS_PATH}/${uid}`);
   onValue(userFriendsRtdbRef, (snap) => {
@@ -2053,7 +2248,7 @@ function renderFriendListItem(container, f, realIndex) {
   `;
   div.querySelector("[data-talk]")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    showFriendCallOptions(realIndex);
+    void startFriendVoiceCall(realIndex);
   });
   div.querySelector("[data-chat]")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -2182,44 +2377,11 @@ function onFriendChatKeydown(e) {
 }
 
 async function stopFriendTalk() {
-  await window.friendTalk?.disconnect?.();
-  activeFriend = null;
-  updatePttHint();
-  refreshStatusBar();
-  renderFriends();
-  setFriendMsg("Friend talk ended.");
+  await endVoiceCall();
 }
 
 async function startFriendTalk(index) {
-  const f = friends[index];
-  if (!f?.uid) return setFriendMsg("Friend not available.", true);
-  if (activeFriend?.uid === f.uid && (window.friendTalk?.isActive?.() || window.friendTalk?.isConnecting?.())) {
-    await stopFriendTalk();
-    return;
-  }
-  if (!navigator.onLine) {
-    return setFriendMsg("Friend talk needs internet. Use Bluetooth offline menu instead.", true);
-  }
-  activeFriend = f;
-  setFriendMsg(`Calling ${friendDisplayLabel(f)}…`);
-  window.friendTalk?.setStatusCallback?.((msg, isErr) => {
-    if (!msg) return;
-    const text =
-      isErr && (String(msg).includes("PERMISSION_DENIED") || String(msg).includes("permission"))
-        ? mapFriendRulesError()
-        : msg;
-    setFriendMsg(text, isErr);
-    refreshStatusBar();
-    updatePttHint();
-    renderFriends();
-  });
-  const ok = await window.friendTalk?.connect?.(loggedInUser.uid, f.uid);
-  if (ok) {
-    closeMenu();
-    updatePttHint();
-    refreshStatusBar();
-    renderFriends();
-  }
+  await startFriendVoiceCall(index);
 }
 
 function setProfileMsg(msg, isError) {
@@ -2498,10 +2660,10 @@ function refreshStatusBar() {
   if (!el) return;
   const friendLabel = getActiveFriendLabel();
   if (friendLabel && window.friendTalk?.isActive?.()) {
-    el.innerHTML = `${loggedInUser.name} · <span class="accent">Talk · ${escapeHtml(friendLabel)}</span>`;
+    el.innerHTML = `${loggedInUser.name} · <span class="accent">On call · ${escapeHtml(friendLabel)}</span>`;
     return;
   }
-  if (friendLabel && window.friendTalk?.isConnecting?.()) {
+  if (friendLabel && window.friendTalk?.isInCall?.()) {
     el.innerHTML = `${loggedInUser.name} · <span style="color:var(--text-faint)">Calling ${escapeHtml(friendLabel)}…</span>`;
     return;
   }
@@ -3937,19 +4099,7 @@ function isTypingInFormField() {
 
 async function startTalk(e) {
   if (e?.cancelable) e.preventDefault();
-  if (activeFriend && window.friendTalk?.isConnecting?.()) {
-    setFriendMsg("Connecting to friend… wait a few seconds.", true);
-    return;
-  }
-  if (window.friendTalk?.isActive?.()) {
-    window.friendTalk.startTransmit();
-    isTalking = true;
-    setPttVisual(true);
-    const el = document.getElementById("statusMain");
-    const label = getActiveFriendLabel() || "Friend";
-    if (el) el.innerHTML = `<span class="accent">Live · Talk · ${escapeHtml(label)}</span>`;
-    return;
-  }
+  if (window.friendTalk?.isInCall?.()) return;
   if (window.offlineTalk?.isActive?.()) {
     window.offlineTalk.startTransmit();
     isTalking = true;
@@ -4010,8 +4160,8 @@ async function startTalk(e) {
 function stopTalk(e) {
   if (e?.cancelable) e.preventDefault();
   if (!isTalking) return;
-  if (window.friendTalk?.isActive?.()) {
-    window.friendTalk.stopTransmit();
+  if (window.friendTalk?.isInCall?.()) {
+    /* voice call — full duplex, no PTT */
   } else if (window.offlineTalk?.isActive?.()) {
     window.offlineTalk.stopTransmit();
   } else if (pttMediaStream) {
@@ -4033,8 +4183,13 @@ async function logout() {
   stopChannelInviteListener();
   stopFriendChatListener();
   closeFriendChat();
+  stopVoiceCallRing();
+  stopVoiceCallTimer();
+  setVoiceCallPanel("hidden");
+  friendTalkUiReady = false;
   window.friendTalk?.cleanup?.();
   activeFriend = null;
+  pendingIncomingCallUid = null;
   window.offlineTalk?.cleanup?.();
   stopTalk();
   closeMenu();
@@ -4152,11 +4307,12 @@ Object.assign(window, {
   cancelFriendRequest,
   startFriendTalk,
   stopFriendTalk,
-  showFriendCallOptions,
-  closeFriendCallOptions,
-  pickFriendPhoneCall,
-  pickFriendWhatsAppCall,
-  pickFriendWalkieCall,
+  startFriendVoiceCall,
+  acceptIncomingVoiceCall,
+  declineIncomingVoiceCall,
+  cancelVoiceCall,
+  endVoiceCall,
+  toggleVoiceCallMute,
   openFriendChat,
   closeFriendChat,
   sendFriendChat,

@@ -1256,6 +1256,94 @@
       text-align: center;
       line-height: 1.4;
     }
+    .voice-call-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 400;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 48px 24px calc(32px + env(safe-area-inset-bottom, 0px));
+      background: linear-gradient(180deg, #1a3d2e 0%, #0f2419 55%, #0a1812 100%);
+      color: #f5f5f5;
+    }
+    .voice-call-screen.open { display: flex; }
+    .voice-call-top { text-align: center; width: 100%; }
+    .voice-call-avatar {
+      width: 96px;
+      height: 96px;
+      border-radius: 50%;
+      margin: 0 auto 16px;
+      background: rgba(255, 255, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .voice-call-name {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .voice-call-status {
+      font-size: 14px;
+      color: rgba(245, 245, 245, 0.72);
+      min-height: 20px;
+    }
+    .voice-call-timer {
+      font-size: 13px;
+      color: rgba(245, 245, 245, 0.55);
+      margin-top: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    .voice-call-actions {
+      display: flex;
+      gap: 28px;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      flex-wrap: wrap;
+    }
+    .voice-call-actions.incoming { gap: 48px; }
+    .voice-call-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      border: none;
+      background: transparent;
+      color: #f5f5f5;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .voice-call-btn-circle {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+    }
+    .voice-call-btn-circle.end,
+    .voice-call-btn-circle.decline {
+      background: #e53935;
+    }
+    .voice-call-btn-circle.accept {
+      background: #22c55e;
+    }
+    .voice-call-btn-circle.mute {
+      background: rgba(255, 255, 255, 0.16);
+    }
+    .voice-call-btn-circle.mute.on {
+      background: rgba(255, 255, 255, 0.32);
+    }
+    .voice-call-btn-circle.cancel {
+      background: rgba(255, 255, 255, 0.16);
+    }
     .friend-chat-box {
       margin-top: 10px;
       border: 1px solid var(--border);
@@ -1580,25 +1668,40 @@
 
   <div id="menuOverlay" class="menu-overlay" onclick="closeMenu()"></div>
 
-  <div id="friendCallOverlay" class="call-overlay" onclick="if(event.target===this)closeFriendCallOptions()">
-    <div class="call-sheet" role="dialog" aria-labelledby="friendCallTitle">
-      <div class="call-sheet-head">
-        <span class="call-sheet-title" id="friendCallTitle">Call friend</span>
-        <button type="button" class="call-sheet-close" onclick="closeFriendCallOptions()" aria-label="Close">×</button>
+  <div id="voiceCallScreen" class="voice-call-screen" aria-hidden="true">
+    <div class="voice-call-top">
+      <div class="voice-call-avatar" id="voiceCallAvatar">?</div>
+      <div class="voice-call-name" id="voiceCallName">Friend</div>
+      <div class="voice-call-status" id="voiceCallStatus">Calling…</div>
+      <div class="voice-call-timer" id="voiceCallTimer"></div>
+    </div>
+    <div class="voice-call-actions" id="voiceCallActions">
+      <div id="voiceCallOutgoingActions" style="display:none;">
+        <button type="button" class="voice-call-btn" onclick="cancelVoiceCall()">
+          <span class="voice-call-btn-circle cancel">📵</span>
+          Cancel
+        </button>
       </div>
-      <button type="button" class="call-option-btn primary" id="friendCallPhone" onclick="pickFriendPhoneCall()">
-        <span>📞 Phone call</span>
-        <span class="call-option-sub">Normal mobile call (SIM)</span>
-      </button>
-      <button type="button" class="call-option-btn" id="friendCallWhatsApp" onclick="pickFriendWhatsAppCall()">
-        <span>💬 WhatsApp call</span>
-        <span class="call-option-sub">Data call — opens WhatsApp</span>
-      </button>
-      <button type="button" class="call-option-btn" onclick="pickFriendWalkieCall()">
-        <span>🎙️ Walkie talk</span>
-        <span class="call-option-sub">In-app — Hold to talk</span>
-      </button>
-      <p class="call-sheet-hint" id="friendCallHint"></p>
+      <div id="voiceCallIncomingActions" class="voice-call-actions incoming" style="display:none;">
+        <button type="button" class="voice-call-btn" onclick="declineIncomingVoiceCall()">
+          <span class="voice-call-btn-circle decline">✕</span>
+          Decline
+        </button>
+        <button type="button" class="voice-call-btn" onclick="acceptIncomingVoiceCall()">
+          <span class="voice-call-btn-circle accept">📞</span>
+          Accept
+        </button>
+      </div>
+      <div id="voiceCallActiveActions" style="display:none;">
+        <button type="button" class="voice-call-btn" onclick="toggleVoiceCallMute()">
+          <span class="voice-call-btn-circle mute" id="voiceCallMuteBtn">🎤</span>
+          <span id="voiceCallMuteLabel">Mute</span>
+        </button>
+        <button type="button" class="voice-call-btn" onclick="endVoiceCall()">
+          <span class="voice-call-btn-circle end">📵</span>
+          End
+        </button>
+      </div>
     </div>
   </div>
   <nav id="sideMenu" class="side-menu" aria-label="App menu">

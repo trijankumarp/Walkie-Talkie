@@ -84,6 +84,14 @@
         }
       }
     },
+    "friendIncomingCalls": {
+      "$toUid": {
+        ".read": "auth != null && auth.uid === $toUid",
+        "$fromUid": {
+          ".write": "auth != null && (auth.uid === $fromUid || auth.uid === $toUid)"
+        }
+      }
+    },
     "channelInvites": {
       "$toUid": {
         ".read": "auth != null && auth.uid === $toUid",
