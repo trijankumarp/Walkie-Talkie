@@ -3826,6 +3826,10 @@ function isTypingInFormField() {
 
 async function startTalk(e) {
   if (e?.cancelable) e.preventDefault();
+  if (activeFriend && window.friendTalk?.isConnecting?.()) {
+    setFriendMsg("Connecting to friend… wait a few seconds.", true);
+    return;
+  }
   if (window.friendTalk?.isActive?.()) {
     window.friendTalk.startTransmit();
     isTalking = true;
@@ -3833,10 +3837,6 @@ async function startTalk(e) {
     const el = document.getElementById("statusMain");
     const label = getActiveFriendLabel() || "Friend";
     if (el) el.innerHTML = `<span class="accent">Live · Talk · ${escapeHtml(label)}</span>`;
-    return;
-  }
-  if (activeFriend && window.friendTalk?.isConnecting?.()) {
-    setFriendMsg("Connecting to friend… wait a few seconds.", true);
     return;
   }
   if (window.offlineTalk?.isActive?.()) {

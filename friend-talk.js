@@ -2,7 +2,12 @@
  * 1:1 friend voice talk over internet (WebRTC + Firebase RTDB signaling).
  */
 
-const FT_ICE = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+const FT_ICE = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" }
+  ]
+};
 
 let ftDb = null;
 let ftPc = null;
@@ -14,6 +19,10 @@ let ftSignalPath = null;
 let ftUnsubs = [];
 let ftConnected = false;
 let ftStatusCb = null;
+let ftSessionId = null;
+let ftPendingCandidates = [];
+let ftSeenCandidateKeys = new Set();
+let ftHandlingOffer = false;
 
 async function ftLoadDb() {
   if (ftDb) return ftDb;
@@ -59,14 +68,62 @@ function ftStopUnsubs() {
   ftUnsubs = [];
 }
 
+function ftResetIceQueue() {
+  ftPendingCandidates = [];
+  ftSeenCandidateKeys = new Set();
+}
+
+function ftPlayRemote() {
+  if (!ftRemoteAudio) return;
+  const p = ftRemoteAudio.play();
+  if (p && typeof p.catch === "function") {
+    p.catch(() => {
+      /* autoplay may need a user gesture; PTT press will retry */
+    });
+  }
+}
+
 function ftAttachRemote(stream) {
+  if (!stream) return;
   if (!ftRemoteAudio) {
     ftRemoteAudio = document.createElement("audio");
     ftRemoteAudio.autoplay = true;
     ftRemoteAudio.playsInline = true;
+    ftRemoteAudio.setAttribute("playsinline", "");
+    ftRemoteAudio.volume = 1;
     document.body.appendChild(ftRemoteAudio);
   }
   ftRemoteAudio.srcObject = stream;
+  ftPlayRemote();
+}
+
+async function ftDrainCandidates() {
+  if (!ftPc?.remoteDescription) return;
+  const pending = ftPendingCandidates.splice(0);
+  for (const candidate of pending) {
+    try {
+      await ftPc.addIceCandidate(candidate);
+    } catch {
+      /* ignore stale/duplicate candidates */
+    }
+  }
+}
+
+async function ftAddRemoteCandidate(candidateJson, key) {
+  if (!ftPc || !candidateJson) return;
+  if (key && ftSeenCandidateKeys.has(key)) return;
+  if (key) ftSeenCandidateKeys.add(key);
+
+  const candidate = new RTCIceCandidate(candidateJson);
+  if (!ftPc.remoteDescription) {
+    ftPendingCandidates.push(candidate);
+    return;
+  }
+  try {
+    await ftPc.addIceCandidate(candidate);
+  } catch {
+    /* ignore */
+  }
 }
 
 async function ftEnsureMic() {
@@ -85,14 +142,79 @@ function ftIsInitiator(myUid, friendUid) {
   return ftPair(myUid, friendUid)[0] === myUid;
 }
 
+function ftAdoptSessionId(data) {
+  if (!data?.sessionId) return;
+  if (!ftSessionId) {
+    ftSessionId = data.sessionId;
+    return;
+  }
+  if (ftSessionId !== data.sessionId && ftMyUid && ftFriendUid && ftIsInitiator(ftMyUid, ftFriendUid)) {
+    return;
+  }
+  ftSessionId = data.sessionId;
+}
+
+function ftIsCurrentSession(data) {
+  if (!data?.sessionId) return true;
+  ftAdoptSessionId(data);
+  if (!ftSessionId) return true;
+  return data.sessionId === ftSessionId;
+}
+
 async function ftPushCandidate(rtdb, path, myUid, candidate) {
   const { ref, push, set } = await ftLoadDb();
   const id = push(ref(rtdb, `${path}/candidates/${myUid}`)).key;
   await set(ref(rtdb, `${path}/candidates/${myUid}/${id}`), {
     candidate: candidate.toJSON(),
     fromUid: myUid,
+    sessionId: ftSessionId,
     at: Date.now()
   });
+}
+
+async function ftHandleOffer(rtdb, data) {
+  if (!ftPc || ftHandlingOffer) return;
+  const offer = data?.offer;
+  if (!offer?.sdp || offer.fromUid !== ftFriendUid) return;
+  if (!ftIsCurrentSession(data)) return;
+  if (ftPc.signalingState !== "stable") return;
+
+  ftHandlingOffer = true;
+  try {
+    await ftPc.setRemoteDescription(offer.sdp);
+    const answer = await ftPc.createAnswer();
+    await ftPc.setLocalDescription(answer);
+    await ftLoadDb().then(({ ref, set }) =>
+      set(ref(rtdb, `${ftSignalPath}/answer`), {
+        sdp: ftPc.localDescription,
+        fromUid: ftMyUid,
+        sessionId: ftSessionId,
+        at: Date.now()
+      })
+    );
+    await ftDrainCandidates();
+  } catch (err) {
+    console.warn("Friend talk answer failed", err);
+  } finally {
+    ftHandlingOffer = false;
+  }
+}
+
+async function ftHandleAnswer(data) {
+  if (!ftPc) return;
+  const answer = data?.answer;
+  const offer = data?.offer;
+  if (!answer?.sdp || answer.fromUid !== ftFriendUid) return;
+  if (!ftIsCurrentSession(data)) return;
+  if (ftPc.signalingState !== "have-local-offer") return;
+  if (offer?.at && answer.at && answer.at < offer.at) return;
+
+  try {
+    await ftPc.setRemoteDescription(answer.sdp);
+    await ftDrainCandidates();
+  } catch (err) {
+    console.warn("Friend talk set answer failed", err);
+  }
 }
 
 async function ftCreatePeer(myUid, friendUid) {
@@ -103,7 +225,9 @@ async function ftCreatePeer(myUid, friendUid) {
   ftMyUid = myUid;
   ftFriendUid = friendUid;
   ftSignalPath = ftSignalBase(myUid, friendUid);
+  ftSessionId = ftIsInitiator(myUid, friendUid) ? `ft_${Date.now()}` : null;
   ftConnected = false;
+  ftResetIceQueue();
 
   if (ftPc) {
     ftPc.close();
@@ -115,7 +239,11 @@ async function ftCreatePeer(myUid, friendUid) {
   stream.getTracks().forEach((t) => ftPc.addTrack(t, stream));
 
   ftPc.ontrack = (ev) => {
-    if (ev.streams?.[0]) ftAttachRemote(ev.streams[0]);
+    if (ev.streams?.[0]) {
+      ftAttachRemote(ev.streams[0]);
+      return;
+    }
+    if (ev.track) ftAttachRemote(new MediaStream([ev.track]));
   };
 
   ftPc.onicecandidate = (ev) => {
@@ -127,6 +255,7 @@ async function ftCreatePeer(myUid, friendUid) {
     if (s === "connected") {
       ftConnected = true;
       ftSetStatus("Friend talk connected — Hold to talk.");
+      ftPlayRemote();
       if (typeof window.refreshStatusBar === "function") window.refreshStatusBar();
       if (typeof window.updatePttHint === "function") window.updatePttHint();
     } else if (s === "failed" || s === "disconnected") {
@@ -141,39 +270,19 @@ async function ftCreatePeer(myUid, friendUid) {
   const onSignal = async (snap) => {
     const data = snap.val();
     if (!data || !ftPc) return;
-
-    if (data.offer?.fromUid === friendUid && data.offer?.sdp && ftPc.signalingState !== "stable") {
-      try {
-        await ftPc.setRemoteDescription(data.offer.sdp);
-        const answer = await ftPc.createAnswer();
-        await ftPc.setLocalDescription(answer);
-        await set(ref(rtdb, `${ftSignalPath}/answer`), {
-          sdp: ftPc.localDescription,
-          fromUid: myUid,
-          at: Date.now()
-        });
-      } catch (err) {
-        console.warn("Friend talk answer failed", err);
-      }
-    }
-
-    if (data.answer?.fromUid === friendUid && data.answer?.sdp && ftPc.signalingState === "have-local-offer") {
-      try {
-        await ftPc.setRemoteDescription(data.answer.sdp);
-      } catch (err) {
-        console.warn("Friend talk set answer failed", err);
-      }
-    }
+    await ftHandleOffer(rtdb, data);
+    await ftHandleAnswer(data);
   };
   onValue(signalRef, onSignal);
   ftUnsubs.push(() => off(signalRef));
 
   const candRef = ref(rtdb, `${ftSignalPath}/candidates/${friendUid}`);
-  const onCand = async (snap) => {
+  const onCand = (snap) => {
     snap.forEach((child) => {
       const item = child.val();
       if (!item?.candidate || !ftPc) return;
-      ftPc.addIceCandidate(new RTCIceCandidate(item.candidate)).catch(() => {});
+      if (item.sessionId && ftSessionId && item.sessionId !== ftSessionId) return;
+      void ftAddRemoteCandidate(item.candidate, child.key);
     });
   };
   onValue(candRef, onCand);
@@ -182,19 +291,34 @@ async function ftCreatePeer(myUid, friendUid) {
   if (ftIsInitiator(myUid, friendUid)) {
     const offer = await ftPc.createOffer();
     await ftPc.setLocalDescription(offer);
-    await set(ref(rtdb, `${ftSignalPath}/offer`), {
-      sdp: ftPc.localDescription,
-      fromUid: myUid,
-      at: Date.now()
+    await set(ref(rtdb, ftSignalPath), {
+      sessionId: ftSessionId,
+      offer: {
+        sdp: ftPc.localDescription,
+        fromUid: myUid,
+        at: Date.now()
+      }
     });
     ftSetStatus("Calling friend…");
   } else {
     const existing = (await get(signalRef)).val();
+    ftAdoptSessionId(existing);
     if (existing?.offer?.fromUid === friendUid) {
-      await onSignal({ val: () => existing });
+      await ftHandleOffer(rtdb, existing);
     } else {
       ftSetStatus("Waiting for friend to connect…");
     }
+  }
+}
+
+async function ftClearSignal(path) {
+  const rtdb = ftGetRtdb();
+  if (!rtdb || !path) return;
+  try {
+    const { ref, remove } = await ftLoadDb();
+    await remove(ref(rtdb, path));
+  } catch {
+    /* ignore */
   }
 }
 
@@ -205,7 +329,9 @@ async function ftConnect(myUid, friendUid) {
   }
   if (!myUid || !friendUid) return false;
   try {
+    const path = ftSignalBase(myUid, friendUid);
     await ftDisconnect(false);
+    await ftClearSignal(path);
     await ftCreatePeer(myUid, friendUid);
     return true;
   } catch (err) {
@@ -218,6 +344,8 @@ async function ftConnect(myUid, friendUid) {
 async function ftDisconnect(clearSignal = true) {
   ftStopUnsubs();
   ftConnected = false;
+  ftHandlingOffer = false;
+  ftResetIceQueue();
   if (ftStream) {
     ftStream.getTracks().forEach((t) => {
       t.enabled = false;
@@ -228,16 +356,12 @@ async function ftDisconnect(clearSignal = true) {
     ftPc = null;
   }
   if (clearSignal && ftSignalPath && ftGetRtdb()) {
-    try {
-      const { ref, remove } = await ftLoadDb();
-      await remove(ref(ftGetRtdb(), ftSignalPath));
-    } catch {
-      /* ignore */
-    }
+    await ftClearSignal(ftSignalPath);
   }
   ftMyUid = null;
   ftFriendUid = null;
   ftSignalPath = null;
+  ftSessionId = null;
 }
 
 function ftCleanup() {
@@ -270,6 +394,7 @@ function ftStartTransmit() {
   ftStream.getAudioTracks().forEach((t) => {
     t.enabled = true;
   });
+  ftPlayRemote();
 }
 
 function ftStopTransmit() {
