@@ -8,7 +8,19 @@ import {
   serverTimestamp,
   limit
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
-import { ref, set, get, update, onValue, off } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
+import {
+  ref,
+  set,
+  get,
+  update,
+  onValue,
+  off,
+  query as rtdbQuery,
+  orderByChild,
+  equalTo,
+  startAt,
+  endAt
+} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
 
 const CHANNELS_LEGACY_KEY = "walkie_channels_v1";
 const PUBLIC_CHANNELS_COLLECTION = "publicChannels";
@@ -16,6 +28,8 @@ const USER_CHANNELS_PATH = "userChannels";
 const USER_SETTINGS_PATH = "userSettings";
 const PUBLIC_USERS_PATH = "publicUsers";
 const PUBLIC_USERS_BY_UID_PATH = "publicUsersByUid";
+const PUBLIC_USERS_BY_EMAIL_PATH = "publicUsersByEmail";
+const RTDB_KEY_DOT = ",";
 const CHANNEL_STALE_MS = 5 * 60 * 1000;
 const THEME_KEY = "walkie_theme_v1";
 const BT_DEVICES_KEY = "walkie_bt_devices_v1";
@@ -401,6 +415,7 @@ function toggleFriendPanel() {
   document.getElementById("btnFriendAction")?.classList.toggle("selected", friendPanelOpen);
   document.getElementById("friendPanel")?.classList.toggle("open", friendPanelOpen);
   if (friendPanelOpen) {
+    void publishMyPublicProfile();
     renderFriends();
     const q = getFriendSearchQuery();
     if (q.length >= 2) void runFriendSearch(q);
@@ -1172,6 +1187,14 @@ function setFriendMsg(msg, isError) {
   el.className = "profile-msg" + (msg ? (isError ? " err" : " ok") : "");
 }
 
+function encodeRtdbKey(value) {
+  return (value || "").toLowerCase().replace(/\./g, RTDB_KEY_DOT);
+}
+
+function decodeRtdbKey(key) {
+  return (key || "").replace(new RegExp(RTDB_KEY_DOT, "g"), ".");
+}
+
 function getFriendSearchQuery() {
   return (document.getElementById("friendSearch")?.value || "").trim().toLowerCase().replace(/^@/, "");
 }
@@ -1199,9 +1222,33 @@ function isFriendAlready(profile) {
   );
 }
 
+function ensureUserIdForPublish(uid) {
+  let userId = getUserId(uid);
+  if (userId && !validateUserId(userId)) return userId;
+
+  const suggested = suggestUserIdFromEmail(loggedInUser?.email);
+  if (suggested.length >= 3 && !validateUserId(suggested)) {
+    saveProfileExtra(uid, { userId: suggested });
+    return suggested;
+  }
+
+  const fromUid = normalizeUserId((uid || "").replace(/[^a-z0-9]/gi, "").slice(0, 24));
+  if (fromUid.length >= 3 && !validateUserId(fromUid)) {
+    saveProfileExtra(uid, { userId: fromUid });
+    return fromUid;
+  }
+
+  const padded = normalizeUserId(`${suggested || "user"}_${(uid || "").slice(0, 6)}`).slice(0, 24);
+  if (padded.length >= 3 && !validateUserId(padded)) {
+    saveProfileExtra(uid, { userId: padded });
+    return padded;
+  }
+  return null;
+}
+
 function buildPublicProfilePayload(uid) {
-  const userId = getUserId(uid);
-  if (!userId || validateUserId(userId)) return null;
+  const userId = ensureUserIdForPublish(uid);
+  if (!userId) return null;
   const displayName = getFullName(loggedInUser) || loggedInUser?.name || "";
   const email = (loggedInUser?.email || "").toLowerCase();
   return {
@@ -1215,11 +1262,40 @@ function buildPublicProfilePayload(uid) {
   };
 }
 
+async function loadProfileFromCloud(uid) {
+  const rtdb = getRealtimeDb();
+  if (!rtdb || !uid) return;
+  try {
+    const snap = await get(ref(rtdb, `${USER_SETTINGS_PATH}/${uid}`));
+    const data = snap.val();
+    if (!data) return;
+    const patch = {};
+    if (data.userId) patch.userId = data.userId;
+    if (data.gender) patch.gender = data.gender;
+    if (data.birthday) patch.birthday = data.birthday;
+    if (data.language) patch.language = data.language;
+    if (Object.keys(patch).length) saveProfileExtra(uid, patch);
+    if (data.displayName) {
+      const parsed = parseNameParts(data.displayName);
+      if (parsed.firstName || parsed.lastName) {
+        saveUserNames(uid, parsed.firstName, parsed.lastName);
+        if (loggedInUser?.uid === uid) {
+          loggedInUser.firstName = parsed.firstName;
+          loggedInUser.lastName = parsed.lastName;
+          loggedInUser.name = data.displayName;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Load profile from cloud failed", err);
+  }
+}
+
 async function isUserIdAvailable(userId, uid) {
   const rtdb = getRealtimeDb();
   if (!rtdb) return true;
   try {
-    const snap = await get(ref(rtdb, `${PUBLIC_USERS_PATH}/${userId}`));
+    const snap = await get(ref(rtdb, `${PUBLIC_USERS_PATH}/${encodeRtdbKey(userId)}`));
     if (!snap.exists()) return true;
     return snap.val()?.uid === uid;
   } catch {
@@ -1236,15 +1312,35 @@ async function publishMyPublicProfile() {
     const oldHandleSnap = await get(ref(rtdb, `${PUBLIC_USERS_BY_UID_PATH}/${uid}`));
     const oldHandle = oldHandleSnap.val();
     if (oldHandle && oldHandle !== payload.userId) {
-      await set(ref(rtdb, `${PUBLIC_USERS_PATH}/${oldHandle}`), null);
+      await set(ref(rtdb, `${PUBLIC_USERS_PATH}/${encodeRtdbKey(oldHandle)}`), null);
     }
-    await set(ref(rtdb, `${PUBLIC_USERS_PATH}/${payload.userId}`), payload);
+    const oldEmailSnap = await get(ref(rtdb, `${USER_SETTINGS_PATH}/${uid}/emailLower`));
+    const oldEmail = oldEmailSnap.val();
+    if (oldEmail && oldEmail !== payload.emailLower) {
+      await set(ref(rtdb, `${PUBLIC_USERS_BY_EMAIL_PATH}/${encodeRtdbKey(oldEmail)}`), null);
+    }
+    await set(ref(rtdb, `${PUBLIC_USERS_PATH}/${encodeRtdbKey(payload.userId)}`), payload);
     await set(ref(rtdb, `${PUBLIC_USERS_BY_UID_PATH}/${uid}`), payload.userId);
+    if (payload.emailLower) {
+      await set(ref(rtdb, `${PUBLIC_USERS_BY_EMAIL_PATH}/${encodeRtdbKey(payload.emailLower)}`), uid);
+    }
+    await update(ref(rtdb, `${USER_SETTINGS_PATH}/${uid}`), {
+      userId: payload.userId,
+      displayName: payload.displayName,
+      emailLower: payload.emailLower,
+      profileUpdatedAt: Date.now()
+    });
     return true;
   } catch (err) {
     console.warn("Publish public profile failed", err);
     return false;
   }
+}
+
+function pushFriendSearchResult(results, seen, profile, myUid) {
+  if (!profile?.uid || profile.uid === myUid || seen.has(profile.uid)) return;
+  results.push(profile);
+  seen.add(profile.uid);
 }
 
 function appendFriendSectionLabel(container, text) {
@@ -1299,7 +1395,7 @@ function renderFriends() {
       friendSearchResults.forEach((profile) => renderFriendSearchItem(container, profile));
     } else if (!visibleFriends.length) {
       container.innerHTML =
-        '<div class="channel-empty">No users found.<br>Try @User ID, email, or name. Both users need internet + login.</div>';
+        '<div class="channel-empty">No users found.<br>Try @User ID, full email, or name (2+ letters). Friend must login once so profile is online.</div>';
       return;
     }
   }
@@ -1323,11 +1419,22 @@ function renderFriends() {
 }
 
 function searchFriends() {
+  const query = getFriendSearchQuery();
   clearTimeout(friendSearchTimer);
-  friendSearchTimer = setTimeout(() => {
-    void runFriendSearch(getFriendSearchQuery());
-  }, 300);
+  if (query.length < 2) {
+    friendSearchResults = [];
+    friendSearchLoading = false;
+    friendSearchError = "";
+    renderFriends();
+    return;
+  }
+  friendSearchLoading = true;
+  friendSearchResults = [];
+  friendSearchError = "";
   renderFriends();
+  friendSearchTimer = setTimeout(() => {
+    void runFriendSearch(query);
+  }, 280);
 }
 
 async function runFriendSearch(query) {
@@ -1354,31 +1461,53 @@ async function runFriendSearch(query) {
   if (friendPanelOpen) renderFriends();
 
   try {
+    await publishMyPublicProfile();
+
     const results = [];
     const seen = new Set();
     const myUid = loggedInUser?.uid;
 
     if (/^[a-z0-9._]{3,24}$/.test(query)) {
-      const snap = await get(ref(rtdb, `${PUBLIC_USERS_PATH}/${query}`));
-      if (snap.exists()) {
-        const data = snap.val();
-        if (data?.uid && data.uid !== myUid) {
-          results.push(data);
-          seen.add(data.uid);
-        }
-      }
+      const snap = await get(ref(rtdb, `${PUBLIC_USERS_PATH}/${encodeRtdbKey(query)}`));
+      if (snap.exists()) pushFriendSearchResult(results, seen, snap.val(), myUid);
     }
 
-    const allSnap = await get(ref(rtdb, PUBLIC_USERS_PATH));
-    allSnap.forEach((child) => {
-      const data = child.val();
-      if (!data?.uid || data.uid === myUid || seen.has(data.uid)) return;
-      const hay = `${data.displayNameLower || ""} ${data.userId || ""} ${data.emailLower || ""}`;
-      if (query.includes("@") ? data.emailLower === query : hay.includes(query)) {
-        results.push(data);
-        seen.add(data.uid);
+    if (query.includes("@")) {
+      const emailSnap = await get(ref(rtdb, `${PUBLIC_USERS_BY_EMAIL_PATH}/${encodeRtdbKey(query)}`));
+      if (emailSnap.exists()) {
+        const uid = emailSnap.val();
+        const handleSnap = await get(ref(rtdb, `${PUBLIC_USERS_BY_UID_PATH}/${uid}`));
+        const handle = handleSnap.val();
+        if (handle) {
+          const profileSnap = await get(ref(rtdb, `${PUBLIC_USERS_PATH}/${encodeRtdbKey(handle)}`));
+          if (profileSnap.exists()) pushFriendSearchResult(results, seen, profileSnap.val(), myUid);
+        }
       }
-    });
+      const emailQuery = rtdbQuery(
+        ref(rtdb, PUBLIC_USERS_PATH),
+        orderByChild("emailLower"),
+        equalTo(query)
+      );
+      const emailListSnap = await get(emailQuery);
+      emailListSnap.forEach((child) => pushFriendSearchResult(results, seen, child.val(), myUid));
+    } else {
+      const nameQuery = rtdbQuery(
+        ref(rtdb, PUBLIC_USERS_PATH),
+        orderByChild("displayNameLower"),
+        startAt(query),
+        endAt(`${query}\uf8ff`)
+      );
+      const nameSnap = await get(nameQuery);
+      nameSnap.forEach((child) => pushFriendSearchResult(results, seen, child.val(), myUid));
+
+      const allSnap = await get(ref(rtdb, PUBLIC_USERS_PATH));
+      allSnap.forEach((child) => {
+        const data = child.val();
+        if (!data?.uid || data.uid === myUid || seen.has(data.uid)) return;
+        const hay = `${data.displayNameLower || ""} ${data.userId || ""} ${data.emailLower || ""}`;
+        if (hay.includes(query)) pushFriendSearchResult(results, seen, data, myUid);
+      });
+    }
 
     results.sort((a, b) => (a.displayName || a.userId || "").localeCompare(b.displayName || b.userId || ""));
     friendSearchResults = results;
@@ -1418,6 +1547,13 @@ function removeFriend(index) {
   saveFriends();
   renderFriends();
   setFriendMsg("Friend removed.");
+}
+
+function onFriendSearchKeydown(e) {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const first = friendSearchResults[0];
+  if (first && !isFriendAlready(first)) addFriendFromSearch(first);
 }
 
 function setProfileMsg(msg, isError) {
@@ -1723,12 +1859,13 @@ async function enterApp(user) {
   isLoggedIn = true;
   loggedInUser = buildLoggedInUser(user);
   const uid = loggedInUser.uid;
-  if (uid && !getUserId(uid)) {
-    const suggested = suggestUserIdFromEmail(loggedInUser.email);
-    if (suggested.length >= 3) saveProfileExtra(uid, { userId: suggested });
-  }
+  await loadProfileFromCloud(uid);
+  ensureUserIdForPublish(uid);
   loadFriends();
-  void publishMyPublicProfile();
+  const profilePublished = await publishMyPublicProfile();
+  if (!profilePublished) {
+    console.warn("Public profile not published — friend search may not find this user.");
+  }
   loadBtDevices();
   loadBtChannelCode();
   loadSelectedWifi();
@@ -3131,6 +3268,7 @@ Object.assign(window, {
   setupBiometric,
   onBiometricToggle,
   searchFriends,
+  onFriendSearchKeydown,
   addFriendFromSearch,
   removeFriend,
   refreshWifiList,

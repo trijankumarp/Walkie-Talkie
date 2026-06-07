@@ -1500,7 +1500,7 @@
       <div id="friendPanel" class="menu-panel">
         <div class="channel-search-wrap">
           <svg class="channel-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="search" id="friendSearch" class="channel-search" placeholder="Search @User ID, email, or name" oninput="searchFriends()" autocomplete="off">
+          <input type="search" id="friendSearch" class="channel-search" placeholder="Search @User ID, email, or name" oninput="searchFriends()" onkeydown="onFriendSearchKeydown(event)" autocomplete="off">
         </div>
         <div class="channel-list menu-channel-list" id="friendList"></div>
         <p id="friendMsg" class="profile-msg"></p>
