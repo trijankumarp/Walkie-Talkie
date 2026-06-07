@@ -88,6 +88,7 @@
       "$toUid": {
         ".read": "auth != null && auth.uid === $toUid",
         "$fromUid": {
+          ".read": "auth != null && (auth.uid === $fromUid || auth.uid === $toUid)",
           ".write": "auth != null && (auth.uid === $fromUid || auth.uid === $toUid)"
         }
       }

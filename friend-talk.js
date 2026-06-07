@@ -6,9 +6,26 @@
 const FT_ICE = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" }
+    { urls: "stun:stun1.l.google.com:19302" },
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    }
   ]
 };
+
+const FT_CONNECT_TIMEOUT_MS = 45000;
 
 const FT_INCOMING_PATH = "friendIncomingCalls";
 
@@ -32,6 +49,7 @@ let ftRole = null;
 let ftCallState = "idle";
 let ftMuted = false;
 let ftIncomingWatchUid = null;
+let ftConnectTimer = null;
 
 async function ftLoadDb() {
   if (ftDb) return ftDb;
@@ -88,6 +106,37 @@ function ftStopUnsubs() {
 function ftResetIceQueue() {
   ftPendingCandidates = [];
   ftSeenCandidateKeys = new Set();
+}
+
+function ftClearConnectTimer() {
+  if (ftConnectTimer) clearTimeout(ftConnectTimer);
+  ftConnectTimer = null;
+}
+
+function ftStartConnectTimer() {
+  ftClearConnectTimer();
+  ftConnectTimer = setTimeout(() => {
+    if (ftCallState === "connecting" || (ftCallState === "outgoing" && ftRole === "caller")) {
+      ftSetStatus("Call could not connect. Try again.", true);
+      void ftEndCall("lost");
+    }
+  }, FT_CONNECT_TIMEOUT_MS);
+}
+
+function ftWaitIceGathering(pc, timeoutMs = 6000) {
+  if (pc.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      pc.removeEventListener("icegatheringstatechange", onChange);
+      clearTimeout(timer);
+      resolve();
+    };
+    const onChange = () => {
+      if (pc.iceGatheringState === "complete") done();
+    };
+    pc.addEventListener("icegatheringstatechange", onChange);
+    const timer = setTimeout(done, timeoutMs);
+  });
 }
 
 function ftPlayRemote() {
@@ -200,6 +249,7 @@ async function ftHandleOffer(rtdb, data) {
     await ftPc.setRemoteDescription(offer.sdp);
     const answer = await ftPc.createAnswer();
     await ftPc.setLocalDescription(answer);
+    await ftWaitIceGathering(ftPc);
     await ftLoadDb().then(({ ref, set }) =>
       set(ref(rtdb, `${ftSignalPath}/answer`), {
         sdp: ftPc.localDescription,
@@ -268,6 +318,7 @@ async function ftSetupPeerConnection(myUid, friendUid) {
   ftPc.onconnectionstatechange = () => {
     const s = ftPc?.connectionState || "closed";
     if (s === "connected") {
+      ftClearConnectTimer();
       ftConnected = true;
       ftCallState = "active";
       ftApplyMicState();
@@ -283,6 +334,16 @@ async function ftSetupPeerConnection(myUid, friendUid) {
       ftCallState = "connecting";
       ftEmitUi("connecting", { friendUid: ftFriendUid });
       ftSetStatus("Connecting…");
+      ftStartConnectTimer();
+    }
+  };
+
+  ftPc.oniceconnectionstatechange = () => {
+    const ice = ftPc?.iceConnectionState || "closed";
+    if (ice === "connected" || ice === "completed") ftClearConnectTimer();
+    if (ice === "failed") {
+      ftSetStatus("Network blocked call. Try again on mobile data or WiFi.", true);
+      void ftEndCall("lost");
     }
   };
 
@@ -313,8 +374,9 @@ async function ftCallerCreateOffer() {
   const { ref, set } = await ftLoadDb();
   const rtdb = ftGetRtdb();
   if (!rtdb || !ftPc) return;
-  const offer = await ftPc.createOffer();
+  const offer = await ftPc.createOffer({ offerToReceiveAudio: true });
   await ftPc.setLocalDescription(offer);
+  await ftWaitIceGathering(ftPc);
   await set(ref(rtdb, ftSignalPath), {
     sessionId: ftSessionId,
     offer: {
@@ -397,16 +459,20 @@ function ftWatchOutgoingInvite(myUid, friendUid) {
     const inviteRef = ref(rtdb, ftInvitePath(friendUid, myUid));
     const onInvite = (snap) => {
       const data = snap.val();
-      if (!data || ftRole !== "caller" || ftCallState !== "outgoing") return;
-      if (data.status === "accepted") {
-        void ftBeginWebRtc("caller");
+      if (!data || ftRole !== "caller") return;
+      if (data.status === "accepted" && (ftCallState === "outgoing" || ftCallState === "connecting")) {
+        if (ftCallState === "outgoing") void ftBeginWebRtc("caller");
       } else if (data.status === "rejected" || data.status === "cancelled") {
         void ftEndCall(data.status === "rejected" ? "declined" : "cancelled");
       } else if (data.status === "ended") {
         void ftEndCall("ended");
       }
     };
-    onValue(inviteRef, onInvite);
+    const onInviteErr = (err) => {
+      console.warn("Call invite listener failed", err);
+      ftSetStatus(ftFormatError(err), true);
+    };
+    onValue(inviteRef, onInvite, onInviteErr);
     ftUnsubs.push(() => off(inviteRef));
   });
 }
@@ -460,6 +526,7 @@ async function ftStartOutgoingCall(myUid, friendUid, friendName) {
     ftWatchOutgoingInvite(myUid, friendUid);
     ftEmitUi("outgoing", { friendUid, friendName });
     ftSetStatus(`Calling ${friendName || "friend"}…`);
+    ftStartConnectTimer();
     return true;
   } catch (err) {
     console.warn("Outgoing call failed", err);
@@ -543,6 +610,7 @@ async function ftEndCall(reason = "ended") {
     }, 1200);
   }
 
+  ftClearConnectTimer();
   ftStopUnsubs();
   ftConnected = false;
   ftHandlingOffer = false;
