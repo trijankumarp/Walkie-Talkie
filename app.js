@@ -498,7 +498,7 @@ function formatPasswordChanged(iso) {
   }
 }
 
-function getMobileDisplay(uid) {
+function parseMobileProfile(uid) {
   const raw = localStorage.getItem(`${PROFILE_MOBILE_KEY}_${uid}`);
   let parsed = { country: "+91", number: "", verified: false };
   try {
@@ -509,6 +509,18 @@ function getMobileDisplay(uid) {
   }
   const savedCountry = localStorage.getItem(`${PROFILE_COUNTRY_KEY}_${uid}`);
   if (savedCountry) parsed.country = savedCountry;
+  return parsed;
+}
+
+function getMobileE164(uid) {
+  const parsed = parseMobileProfile(uid);
+  const number = (parsed.number || "").replace(/\D/g, "");
+  if (!number || number.length < 8) return null;
+  return `${parsed.country}${number.replace(/^0+/, "")}`.replace(/\s/g, "");
+}
+
+function getMobileDisplay(uid) {
+  const parsed = parseMobileProfile(uid);
   if (!parsed.number) return null;
   return `${parsed.country} ${parsed.number}`;
 }
@@ -1270,13 +1282,117 @@ function friendDisplayLabel(f) {
 }
 
 function friendRecordFromProfile(profile) {
-  return {
+  const record = {
     uid: profile.uid || "",
     userId: profile.userId || "",
     displayName: profile.displayName || "",
     email: profile.emailLower || profile.email || "",
     label: friendDisplayLabel(profile)
   };
+  if (profile.phoneE164) record.phoneE164 = profile.phoneE164;
+  return record;
+}
+
+function buildMyFriendRecord() {
+  const myUid = loggedInUser?.uid;
+  const payload = buildPublicProfilePayload(myUid);
+  if (!payload) {
+    return {
+      uid: myUid || "",
+      displayName: loggedInUser?.name || "You",
+      label: loggedInUser?.name || "You",
+      phoneE164: getMobileE164(myUid) || ""
+    };
+  }
+  return friendRecordFromProfile({
+    uid: myUid,
+    userId: payload.userId,
+    displayName: payload.displayName,
+    emailLower: payload.emailLower,
+    phoneE164: getMobileE164(myUid) || ""
+  });
+}
+
+let pendingFriendCallIndex = null;
+let friendPhoneSyncTimer = null;
+
+async function syncMyPhoneToFriends() {
+  const myUid = loggedInUser?.uid;
+  const rtdb = getRealtimeDb();
+  if (!rtdb || !myUid || !friends.length) return;
+  const myRecord = buildMyFriendRecord();
+  const phoneE164 = myRecord.phoneE164 || "";
+  try {
+    await Promise.all(
+      friends.map(async (f) => {
+        if (!f?.uid) return;
+        await update(ref(rtdb, `${USER_FRIENDS_PATH}/${f.uid}/${myUid}`), {
+          phoneE164,
+          displayName: myRecord.displayName,
+          userId: myRecord.userId,
+          label: myRecord.label
+        });
+      })
+    );
+  } catch (err) {
+    console.warn("Sync phone to friends failed", err);
+  }
+}
+
+function scheduleSyncMyPhoneToFriends() {
+  clearTimeout(friendPhoneSyncTimer);
+  friendPhoneSyncTimer = setTimeout(() => {
+    void syncMyPhoneToFriends();
+  }, 400);
+}
+
+function showFriendCallOptions(index) {
+  const f = friends[index];
+  if (!f) return;
+  pendingFriendCallIndex = index;
+  const overlay = document.getElementById("friendCallOverlay");
+  const title = document.getElementById("friendCallTitle");
+  const phoneBtn = document.getElementById("friendCallPhone");
+  const waBtn = document.getElementById("friendCallWhatsApp");
+  const hint = document.getElementById("friendCallHint");
+  const label = friendDisplayLabel(f);
+  if (title) title.textContent = `Call ${label}`;
+  const phone = f.phoneE164;
+  const hasPhone = !!(phone && String(phone).replace(/\D/g, "").length >= 10);
+  if (phoneBtn) phoneBtn.style.display = hasPhone ? "" : "none";
+  if (waBtn) waBtn.style.display = hasPhone ? "" : "none";
+  if (hint) {
+    hint.textContent = hasPhone
+      ? "Phone / WhatsApp — normal call. Walkie — in-app Hold to talk."
+      : "Friend phone number ledu. Walkie use cheyandi, leda friend Settings lo phone add cheyamandi.";
+  }
+  overlay?.classList.add("open");
+}
+
+function closeFriendCallOptions() {
+  document.getElementById("friendCallOverlay")?.classList.remove("open");
+  pendingFriendCallIndex = null;
+}
+
+function pickFriendPhoneCall() {
+  const f = friends[pendingFriendCallIndex];
+  if (!f?.phoneE164) return setFriendMsg("Friend phone number not available.", true);
+  closeFriendCallOptions();
+  window.location.href = `tel:${f.phoneE164}`;
+}
+
+function pickFriendWhatsAppCall() {
+  const f = friends[pendingFriendCallIndex];
+  if (!f?.phoneE164) return setFriendMsg("Friend phone number not available.", true);
+  closeFriendCallOptions();
+  const digits = String(f.phoneE164).replace(/\D/g, "");
+  window.open(`https://wa.me/${digits}`, "_blank", "noopener");
+}
+
+function pickFriendWalkieCall() {
+  const idx = pendingFriendCallIndex;
+  closeFriendCallOptions();
+  if (idx !== null) void startFriendTalk(idx);
 }
 
 function friendRecordFromRequest(req, prefix) {
@@ -1405,6 +1521,7 @@ function startFriendListeners(uid) {
     });
     friends = list;
     saveFriends();
+    scheduleSyncMyPhoneToFriends();
     if (friendPanelOpen) renderFriends();
   });
 }
@@ -1833,15 +1950,7 @@ async function acceptFriendRequest(fromUid) {
     (await get(ref(rtdb, `${FRIEND_REQUESTS_PATH}/${myUid}/${fromUid}`))).val();
   if (!req) return setFriendMsg("Request not found.", true);
 
-  const myPayload = buildPublicProfilePayload(myUid);
-  const myFriend = myPayload
-    ? friendRecordFromProfile({
-        uid: myUid,
-        userId: myPayload.userId,
-        displayName: myPayload.displayName,
-        emailLower: myPayload.emailLower
-      })
-    : { uid: myUid, displayName: loggedInUser?.name || "You", label: loggedInUser?.name || "You" };
+  const myFriend = buildMyFriendRecord();
   const theirFriend = friendRecordFromRequest(req, "from");
 
   try {
@@ -1944,7 +2053,7 @@ function renderFriendListItem(container, f, realIndex) {
   `;
   div.querySelector("[data-talk]")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    void startFriendTalk(realIndex);
+    showFriendCallOptions(realIndex);
   });
   div.querySelector("[data-chat]")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -2443,6 +2552,7 @@ async function enterApp(user) {
   startUserChannelsListener(uid);
   startFriendListeners(uid);
   startChannelInviteListener(uid);
+  scheduleSyncMyPhoneToFriends();
   refreshStatusBar();
   renderChannels();
   updatePttHint();
@@ -3783,6 +3893,7 @@ async function confirmMobileChange() {
     document.getElementById("profileMobileOtp").value = "";
     showOtpBox("mobileOtpBox", false);
     renderSettingsList();
+    scheduleSyncMyPhoneToFriends();
     setProfileMsg(`Mobile verified: ${country} ${number}`);
   } catch (err) {
     setProfileMsg(window.mosAuth.mapError(err), true);
@@ -4041,6 +4152,11 @@ Object.assign(window, {
   cancelFriendRequest,
   startFriendTalk,
   stopFriendTalk,
+  showFriendCallOptions,
+  closeFriendCallOptions,
+  pickFriendPhoneCall,
+  pickFriendWhatsAppCall,
+  pickFriendWalkieCall,
   openFriendChat,
   closeFriendChat,
   sendFriendChat,

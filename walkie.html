@@ -1167,6 +1167,95 @@
       background: #fafafa;
       color: #171717;
     }
+    .call-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.45);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.2s ease, visibility 0.2s ease;
+    }
+    .call-overlay.open { opacity: 1; visibility: visible; }
+    .call-sheet {
+      width: 100%;
+      max-width: 420px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: 16px 16px 0 0;
+      padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+      transform: translateY(100%);
+      transition: transform 0.25s ease;
+    }
+    .call-overlay.open .call-sheet { transform: translateY(0); }
+    .call-sheet-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .call-sheet-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .call-sheet-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+    .call-option-btn {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: 100%;
+      margin-bottom: 8px;
+      padding: 14px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--accent-soft);
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+    }
+    .call-option-btn:last-of-type { margin-bottom: 0; }
+    .call-option-btn:hover { border-color: var(--text-muted); }
+    .call-option-btn.primary {
+      background: var(--text);
+      color: var(--bg-card);
+      border-color: var(--text);
+    }
+    html[data-theme="dark"] .call-option-btn.primary {
+      background: #fafafa;
+      color: #171717;
+      border-color: #fafafa;
+    }
+    .call-option-sub {
+      display: block;
+      font-size: 11px;
+      font-weight: 400;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .call-option-btn.primary .call-option-sub { color: rgba(255, 255, 255, 0.75); }
+    html[data-theme="dark"] .call-option-btn.primary .call-option-sub { color: rgba(23, 23, 23, 0.65); }
+    .call-sheet-hint {
+      margin: 10px 0 0;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.4;
+    }
     .friend-chat-box {
       margin-top: 10px;
       border: 1px solid var(--border);
@@ -1490,6 +1579,28 @@
   </div>
 
   <div id="menuOverlay" class="menu-overlay" onclick="closeMenu()"></div>
+
+  <div id="friendCallOverlay" class="call-overlay" onclick="if(event.target===this)closeFriendCallOptions()">
+    <div class="call-sheet" role="dialog" aria-labelledby="friendCallTitle">
+      <div class="call-sheet-head">
+        <span class="call-sheet-title" id="friendCallTitle">Call friend</span>
+        <button type="button" class="call-sheet-close" onclick="closeFriendCallOptions()" aria-label="Close">×</button>
+      </div>
+      <button type="button" class="call-option-btn primary" id="friendCallPhone" onclick="pickFriendPhoneCall()">
+        <span>📞 Phone call</span>
+        <span class="call-option-sub">Normal mobile call (SIM)</span>
+      </button>
+      <button type="button" class="call-option-btn" id="friendCallWhatsApp" onclick="pickFriendWhatsAppCall()">
+        <span>💬 WhatsApp call</span>
+        <span class="call-option-sub">Data call — opens WhatsApp</span>
+      </button>
+      <button type="button" class="call-option-btn" onclick="pickFriendWalkieCall()">
+        <span>🎙️ Walkie talk</span>
+        <span class="call-option-sub">In-app — Hold to talk</span>
+      </button>
+      <p class="call-sheet-hint" id="friendCallHint"></p>
+    </div>
+  </div>
   <nav id="sideMenu" class="side-menu" aria-label="App menu">
     <div class="menu-head">
       <div class="menu-user">
