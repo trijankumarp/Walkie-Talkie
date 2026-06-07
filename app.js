@@ -1248,7 +1248,9 @@ function isPermissionDenied(err) {
 
 function mapFriendRulesError() {
   return (
-    'Talk / Chat blocked — Firebase rules not published. Open <a href="https://console.firebase.google.com/project/walkietalkie-mos/database/walkietalkie-mos-default-rtdb/rules" target="_blank" rel="noopener">Realtime Database → Rules</a>, delete old rules, paste <strong>full</strong> <code>database.rules.json</code> (must include <code>friendChats</code>, <code>friendTalk</code>, <code>friendIncomingCalls</code>), click <strong>Publish</strong>, then logout &amp; login on both phones.'
+    "Call/Chat block — Firebase Rules publish cheyali (one time). " +
+    '<a href="https://console.firebase.google.com/project/walkietalkie-mos/database/walkietalkie-mos-default-rtdb/rules" target="_blank" rel="noopener">Open Rules</a> ' +
+    "→ old rules delete → full database.rules.json paste → Publish → rendu phones logout &amp; login."
   );
 }
 
@@ -1511,10 +1513,20 @@ function setupFriendTalkUi() {
   window.friendTalk?.setUiCallback?.(handleFriendTalkUi);
   window.friendTalk?.setStatusCallback?.((msg, isErr) => {
     if (!msg) return;
-    const text =
-      isErr && (String(msg).includes("PERMISSION_DENIED") || String(msg).includes("permission"))
-        ? mapFriendRulesError()
-        : msg;
+    const rulesBlock =
+      isErr &&
+      (String(msg).includes("PERMISSION_DENIED") ||
+        String(msg).includes("permission") ||
+        String(msg).includes("Firebase rules"));
+    const text = rulesBlock ? mapFriendRulesError() : msg;
+    if (rulesBlock) {
+      stopVoiceCallRing();
+      stopVoiceCallTimer();
+      setVoiceCallPanel("hidden");
+      activeFriend = null;
+      pendingIncomingCallUid = null;
+      void window.friendTalk?.endCall?.("ended");
+    }
     setFriendMsg(text, isErr);
     const statusEl = document.getElementById("voiceCallStatus");
     if (statusEl && document.getElementById("voiceCallScreen")?.classList.contains("open")) {
