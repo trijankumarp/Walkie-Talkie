@@ -1526,6 +1526,21 @@ function setupFriendTalkUi() {
   });
 }
 
+function startFriendWhatsAppCall(index) {
+  const f = friends[index];
+  if (!f?.uid) return setFriendMsg("Friend not available.", true);
+  const digits = String(f.phoneE164 || "").replace(/\D/g, "");
+  if (!digits || digits.length < 10) {
+    return setFriendMsg(
+      "WhatsApp call ki friend phone number kavali. Vaallu Settings → Phone lo number save cheyamani cheppandi. Meeru kuda me phone save cheyandi.",
+      true
+    );
+  }
+  closeMenu();
+  setFriendMsg(`WhatsApp opening — ${friendDisplayLabel(f)} chat lo 📞 voice call tap cheyandi.`);
+  window.location.href = `https://wa.me/${digits}`;
+}
+
 async function startFriendVoiceCall(index) {
   const f = friends[index];
   if (!f?.uid) return setFriendMsg("Friend not available.", true);
@@ -2241,14 +2256,14 @@ function renderFriendListItem(container, f, realIndex) {
       ${activeChatFriend?.uid === f.uid ? `<span class="channel-meta">Chat open</span>` : ""}
     </div>
     <div class="friend-row-actions">
-      <button type="button" class="friend-action-btn${activeFriend?.uid === f.uid ? " active" : ""}" data-talk="${realIndex}">Talk</button>
+      <button type="button" class="friend-action-btn" data-talk="${realIndex}" title="WhatsApp voice call">Call</button>
       <button type="button" class="friend-action-btn${activeChatFriend?.uid === f.uid ? " active" : ""}" data-chat="${realIndex}">Chat</button>
       <button type="button" class="delete-btn" title="Remove friend" data-remove="${realIndex}">🗑</button>
     </div>
   `;
   div.querySelector("[data-talk]")?.addEventListener("click", (e) => {
     e.stopPropagation();
-    void startFriendVoiceCall(realIndex);
+    startFriendWhatsAppCall(realIndex);
   });
   div.querySelector("[data-chat]")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -2381,7 +2396,7 @@ async function stopFriendTalk() {
 }
 
 async function startFriendTalk(index) {
-  await startFriendVoiceCall(index);
+  startFriendWhatsAppCall(index);
 }
 
 function setProfileMsg(msg, isError) {
@@ -2670,7 +2685,7 @@ function refreshStatusBar() {
   const ch = getActiveChannelName();
   el.innerHTML = ch
     ? `${loggedInUser.name} · <span class="accent">${escapeHtml(ch)}</span>`
-    : `${loggedInUser.name} · <span style="color:var(--text-faint)">Friends → Talk or Channel</span>`;
+    : `${loggedInUser.name} · <span style="color:var(--text-faint)">Friends → Call (WhatsApp) or Channel</span>`;
 }
 
 function buildLoggedInUser(user) {
@@ -4307,6 +4322,7 @@ Object.assign(window, {
   cancelFriendRequest,
   startFriendTalk,
   stopFriendTalk,
+  startFriendWhatsAppCall,
   startFriendVoiceCall,
   acceptIncomingVoiceCall,
   declineIncomingVoiceCall,
