@@ -64,6 +64,11 @@ let ftRtcStarted = false;
 let ftDisconnectTimer = null;
 let ftIceRestarted = false;
 let ftOfferResendTimer = null;
+let ftSignalingPollTimer = null;
+let ftPendingAnswer = null;
+let ftPendingOffer = null;
+let ftLastAppliedOfferAt = 0;
+let ftLastAppliedAnswerAt = 0;
 
 async function ftLoadDb() {
   if (ftDb) return ftDb;
@@ -141,6 +146,18 @@ function ftClearOfferTimer() {
   ftOfferResendTimer = null;
 }
 
+function ftStopSignalingPoll() {
+  if (ftSignalingPollTimer) clearInterval(ftSignalingPollTimer);
+  ftSignalingPollTimer = null;
+}
+
+function ftClearPendingSignaling() {
+  ftPendingAnswer = null;
+  ftPendingOffer = null;
+  ftLastAppliedOfferAt = 0;
+  ftLastAppliedAnswerAt = 0;
+}
+
 function ftClearDisconnectTimer() {
   if (ftDisconnectTimer) clearTimeout(ftDisconnectTimer);
   ftDisconnectTimer = null;
@@ -174,6 +191,8 @@ async function ftResetForNewSession() {
   ftClearConnectTimer();
   ftClearDisconnectTimer();
   ftClearOfferTimer();
+  ftStopSignalingPoll();
+  ftClearPendingSignaling();
   ftStopCallPoll();
   ftStopUnsubs();
   ftConnected = false;
@@ -383,10 +402,15 @@ async function ftPushCandidate(rtdb, myUid, candidate) {
   });
 }
 
-async function ftApplyOffer(rtdb, packed, fromUid) {
+async function ftApplyOffer(rtdb, packed, fromUid, offerAt = 0) {
   if (!ftPc || ftHandlingOffer || ftRole !== "callee" || !packed) return false;
-  if (fromUid !== ftFriendUid) return false;
-  if (ftPc.signalingState !== "stable") return false;
+  if (fromUid && fromUid !== ftFriendUid) return false;
+  if (offerAt && offerAt <= ftLastAppliedOfferAt) return false;
+
+  if (ftPc.signalingState !== "stable") {
+    ftPendingOffer = { packed, fromUid: fromUid || ftFriendUid, offerAt };
+    return false;
+  }
 
   ftHandlingOffer = true;
   try {
@@ -403,7 +427,10 @@ async function ftApplyOffer(rtdb, packed, fromUid) {
       fromUid: ftMyUid,
       at: Date.now()
     });
+    ftLastAppliedOfferAt = offerAt || Date.now();
+    ftPendingOffer = null;
     await ftDrainCandidates();
+    ftSetStatus("Connecting…");
     return true;
   } catch (err) {
     console.warn("Friend call answer failed", err);
@@ -414,10 +441,21 @@ async function ftApplyOffer(rtdb, packed, fromUid) {
   }
 }
 
-async function ftApplyAnswer(packed, fromUid) {
+async function ftTryApplyPendingOffer(rtdb) {
+  if (!ftPendingOffer || !rtdb) return false;
+  const { packed, fromUid, offerAt } = ftPendingOffer;
+  return ftApplyOffer(rtdb, packed, fromUid, offerAt);
+}
+
+async function ftApplyAnswer(packed, fromUid, answerAt = 0) {
   if (!ftPc || ftRole !== "caller" || ftAnswerApplied || !packed) return false;
-  if (fromUid !== ftFriendUid) return false;
-  if (ftPc.signalingState !== "have-local-offer") return false;
+  if (fromUid && fromUid !== ftFriendUid) return false;
+  if (answerAt && answerAt <= ftLastAppliedAnswerAt) return false;
+
+  if (ftPc.signalingState !== "have-local-offer") {
+    ftPendingAnswer = { packed, fromUid: fromUid || ftFriendUid, answerAt };
+    return false;
+  }
 
   try {
     const desc = ftUnpackSdp(packed);
@@ -425,13 +463,22 @@ async function ftApplyAnswer(packed, fromUid) {
     await ftPc.setRemoteDescription(desc);
     await ftDrainCandidates();
     ftAnswerApplied = true;
+    ftLastAppliedAnswerAt = answerAt || Date.now();
+    ftPendingAnswer = null;
     ftClearOfferTimer();
     ftSetStatus("Connecting…");
     return true;
   } catch (err) {
     console.warn("Friend call set answer failed", err);
+    ftSetStatus(ftFormatError(err), true);
     return false;
   }
+}
+
+async function ftTryApplyPendingAnswer() {
+  if (!ftPendingAnswer) return false;
+  const { packed, fromUid, answerAt } = ftPendingAnswer;
+  return ftApplyAnswer(packed, fromUid, answerAt);
 }
 
 function ftBindPeerEvents(rtdb, myUid) {
@@ -545,7 +592,7 @@ function ftWatchSessionSignaling(rtdb, myUid, friendUid) {
   const onOffer = (snap) => {
     const data = snap.val();
     if (!data?.sdp || !ftPc) return;
-    void ftApplyOffer(rtdb, data.sdp, data.fromUid);
+    void ftApplyOffer(rtdb, data.sdp, data.fromUid, Number(data.at || 0));
   };
   onValue(offerRef, onOffer);
   ftUnsubs.push(() => off(offerRef));
@@ -554,7 +601,7 @@ function ftWatchSessionSignaling(rtdb, myUid, friendUid) {
   const onAnswer = (snap) => {
     const data = snap.val();
     if (!data?.sdp || !ftPc) return;
-    void ftApplyAnswer(data.sdp, data.fromUid);
+    void ftApplyAnswer(data.sdp, data.fromUid, Number(data.at || 0));
   };
   onValue(answerRef, onAnswer);
   ftUnsubs.push(() => off(answerRef));
@@ -573,17 +620,69 @@ function ftWatchSessionSignaling(rtdb, myUid, friendUid) {
 
 async function ftCallerCreateOffer() {
   const rtdb = ftGetRtdb();
-  if (!rtdb || !ftPc) return;
-  const { ref, set } = await ftLoadDb();
-  ftSetStatus("Starting call link…");
-  const offer = await ftPc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: ftCallMode === "video" });
-  await ftPc.setLocalDescription(offer);
-  await ftWaitIceGathering(ftPc);
-  await set(ref(rtdb, `${ftSessionPath}/offer`), {
-    sdp: ftPackSdp(ftPc.localDescription),
-    fromUid: ftMyUid,
-    at: Date.now()
-  });
+  if (!rtdb || !ftPc) return false;
+  const { ref, set, get } = await ftLoadDb();
+  try {
+    ftSetStatus("Starting call link…");
+    const offer = await ftPc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: ftCallMode === "video"
+    });
+    await ftPc.setLocalDescription(offer);
+    await ftWaitIceGathering(ftPc);
+    const offerAt = Date.now();
+    await set(ref(rtdb, `${ftSessionPath}/offer`), {
+      sdp: ftPackSdp(ftPc.localDescription),
+      fromUid: ftMyUid,
+      at: offerAt
+    });
+    ftSetStatus("Waiting for answer…");
+    await ftTryApplyPendingAnswer();
+    const answerSnap = await get(ref(rtdb, `${ftSessionPath}/answer`));
+    const answerData = answerSnap.val();
+    if (answerData?.sdp) {
+      await ftApplyAnswer(answerData.sdp, answerData.fromUid, Number(answerData.at || 0));
+    }
+    await ftTryApplyPendingAnswer();
+    return true;
+  } catch (err) {
+    console.warn("Create offer failed", err);
+    ftSetStatus(ftFormatError(err), true);
+    return false;
+  }
+}
+
+async function ftPollSignalingOnce() {
+  const rtdb = ftGetRtdb();
+  if (!rtdb || !ftPc || !ftSessionPath || ftCallState !== "connecting") return;
+  try {
+    const { ref, get } = await ftLoadDb();
+    if (ftRole === "callee" && !ftAnswerApplied) {
+      const offerSnap = await get(ref(rtdb, `${ftSessionPath}/offer`));
+      const offerData = offerSnap.val();
+      if (offerData?.sdp) {
+        await ftApplyOffer(rtdb, offerData.sdp, offerData.fromUid, Number(offerData.at || 0));
+      }
+      await ftTryApplyPendingOffer(rtdb);
+    }
+    if (ftRole === "caller" && !ftAnswerApplied) {
+      const answerSnap = await get(ref(rtdb, `${ftSessionPath}/answer`));
+      const answerData = answerSnap.val();
+      if (answerData?.sdp) {
+        await ftApplyAnswer(answerData.sdp, answerData.fromUid, Number(answerData.at || 0));
+      }
+      await ftTryApplyPendingAnswer();
+    }
+  } catch (err) {
+    console.warn("Signaling poll failed", err);
+  }
+}
+
+function ftStartSignalingPoll() {
+  ftStopSignalingPoll();
+  ftSignalingPollTimer = setInterval(() => {
+    void ftPollSignalingOnce();
+  }, 1500);
 }
 
 function ftScheduleOfferResend() {
@@ -706,16 +805,24 @@ async function ftBeginWebRtc(role) {
   await ftSetupPeerConnection(ftMyUid, ftFriendUid);
   ftWatchSessionSignaling(rtdb, ftMyUid, ftFriendUid);
 
+  ftStartSignalingPoll();
+
   if (role === "caller") {
-    await ftCallerCreateOffer();
+    const ok = await ftCallerCreateOffer();
+    if (!ok && ftCallState === "connecting") {
+      ftSetStatus("Could not start call link. Check Firebase rules.", true);
+    }
     ftScheduleOfferResend();
   } else {
     const { ref, get } = await ftLoadDb();
     const offerSnap = await get(ref(rtdb, `${ftSessionPath}/offer`));
     const offerData = offerSnap.val();
     if (offerData?.sdp) {
-      await ftApplyOffer(rtdb, offerData.sdp, offerData.fromUid);
+      await ftApplyOffer(rtdb, offerData.sdp, offerData.fromUid, Number(offerData.at || 0));
+    } else {
+      ftSetStatus("Waiting for caller…");
     }
+    await ftTryApplyPendingOffer(rtdb);
   }
 
   ftWatchCallStatusDuringRtc(ftMyUid, ftFriendUid);
@@ -903,6 +1010,8 @@ async function ftEndCall(reason = "ended") {
   ftClearConnectTimer();
   ftClearDisconnectTimer();
   ftClearOfferTimer();
+  ftStopSignalingPoll();
+  ftClearPendingSignaling();
   ftStopCallPoll();
   ftStopUnsubs();
   ftConnected = false;
