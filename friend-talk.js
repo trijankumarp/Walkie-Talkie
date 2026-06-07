@@ -52,6 +52,8 @@ let ftIncomingWatchUid = null;
 let ftConnectTimer = null;
 let ftPollTimer = null;
 let ftRtcStarted = false;
+let ftDisconnectTimer = null;
+let ftIceRestarted = false;
 
 async function ftLoadDb() {
   if (ftDb) return ftDb;
@@ -124,6 +126,28 @@ function ftCallStatusPath(uid1, uid2) {
   return `${ftSignalBase(uid1, uid2)}/callStatus`;
 }
 
+function ftStatusMatchesCurrentCall(data) {
+  if (!data) return false;
+  if (!ftSessionId) return true;
+  return !data.sessionId || data.sessionId === ftSessionId;
+}
+
+function ftClearDisconnectTimer() {
+  if (ftDisconnectTimer) clearTimeout(ftDisconnectTimer);
+  ftDisconnectTimer = null;
+}
+
+async function ftPrepareNewCall(myUid, friendUid) {
+  const rtdb = ftGetRtdb();
+  if (!rtdb || !myUid || !friendUid) return;
+  const base = ftSignalBase(myUid, friendUid);
+  const { ref, remove } = await ftLoadDb();
+  await ftClearRtcOnly(base);
+  await remove(ref(rtdb, `${base}/callStatus`));
+  await ftClearInvite(friendUid, myUid);
+  await ftClearInvite(myUid, friendUid);
+}
+
 async function ftSetCallStatus(status, extra = {}) {
   const rtdb = ftGetRtdb();
   if (!rtdb || !ftMyUid || !ftFriendUid) return;
@@ -145,10 +169,12 @@ async function ftSetCallStatus(status, extra = {}) {
 
 async function ftResetForNewSession() {
   ftClearConnectTimer();
+  ftClearDisconnectTimer();
   ftStopCallPoll();
   ftStopUnsubs();
   ftConnected = false;
   ftRtcStarted = false;
+  ftIceRestarted = false;
   ftHandlingOffer = false;
   ftResetIceQueue();
   if (ftPc) {
@@ -200,13 +226,14 @@ async function ftWatchCallStatus(myUid, friendUid) {
   const onStatus = (snap) => {
     const data = snap.val();
     if (!data || ftRole !== "caller") return;
-    if (data.sessionId && ftSessionId && data.sessionId !== ftSessionId) return;
+    if (!ftStatusMatchesCurrentCall(data)) return;
     if (data.status === "accepted" && ftCallState === "outgoing" && !ftRtcStarted) {
       void ftBeginWebRtc("caller");
-    } else if (data.status === "rejected" || data.status === "cancelled") {
-      void ftEndCall(data.status === "rejected" ? "declined" : "cancelled");
-    } else if (data.status === "ended") {
-      void ftEndCall("ended");
+    } else if (
+      ftCallState !== "idle" &&
+      (data.status === "rejected" || data.status === "cancelled" || data.status === "ended")
+    ) {
+      void ftEndCall(data.status === "rejected" ? "declined" : data.status === "cancelled" ? "cancelled" : "ended");
     }
   };
   const onStatusErr = (err) => {
@@ -294,7 +321,7 @@ async function ftAddRemoteCandidate(candidateJson, key) {
 
 function ftApplyMicState() {
   if (!ftStream) return;
-  const on = ftCallState === "active" && !ftMuted;
+  const on = (ftCallState === "active" || ftCallState === "connecting") && !ftMuted;
   ftStream.getAudioTracks().forEach((t) => {
     t.enabled = on;
   });
@@ -423,6 +450,7 @@ async function ftSetupPeerConnection(myUid, friendUid) {
     const s = ftPc?.connectionState || "closed";
     if (s === "connected") {
       ftClearConnectTimer();
+      ftClearDisconnectTimer();
       ftConnected = true;
       ftCallState = "active";
       ftApplyMicState();
@@ -431,9 +459,17 @@ async function ftSetupPeerConnection(myUid, friendUid) {
       ftPlayRemote();
       if (typeof window.refreshStatusBar === "function") window.refreshStatusBar();
       if (typeof window.updatePttHint === "function") window.updatePttHint();
-    } else if (s === "failed" || s === "disconnected") {
+    } else if (s === "failed") {
       ftConnected = false;
       void ftEndCall("lost");
+    } else if (s === "disconnected") {
+      ftClearDisconnectTimer();
+      ftDisconnectTimer = setTimeout(() => {
+        if (ftPc?.connectionState === "disconnected" || ftPc?.connectionState === "failed") {
+          ftConnected = false;
+          void ftEndCall("lost");
+        }
+      }, 6000);
     } else if (s === "connecting") {
       ftCallState = "connecting";
       ftEmitUi("connecting", { friendUid: ftFriendUid });
@@ -444,9 +480,22 @@ async function ftSetupPeerConnection(myUid, friendUid) {
 
   ftPc.oniceconnectionstatechange = () => {
     const ice = ftPc?.iceConnectionState || "closed";
-    if (ice === "connected" || ice === "completed") ftClearConnectTimer();
-    if (ice === "failed") {
-      ftSetStatus("Network blocked call. Try again on mobile data or WiFi.", true);
+    if (ice === "connected" || ice === "completed") {
+      ftClearConnectTimer();
+      ftClearDisconnectTimer();
+    }
+    if (ice === "failed" && ftPc) {
+      if (!ftIceRestarted && typeof ftPc.restartIce === "function") {
+        ftIceRestarted = true;
+        ftSetStatus("Retrying connection…");
+        try {
+          ftPc.restartIce();
+        } catch {
+          void ftEndCall("lost");
+        }
+        return;
+      }
+      ftSetStatus("Network blocked call. Try mobile data or WiFi.", true);
       void ftEndCall("lost");
     }
   };
@@ -515,7 +564,24 @@ async function ftBeginWebRtc(role) {
       await ftHandleOffer(rtdb, existing);
     }
   }
-  ftWatchActiveInvite(ftMyUid, ftFriendUid);
+  ftWatchCallStatusDuringRtc(ftMyUid, ftFriendUid);
+}
+
+async function ftWatchCallStatusDuringRtc(myUid, friendUid) {
+  const rtdb = ftGetRtdb();
+  if (!rtdb) return;
+  const { ref, onValue, off } = await ftLoadDb();
+  const statusRef = ref(rtdb, ftCallStatusPath(myUid, friendUid));
+  const onStatus = (snap) => {
+    const data = snap.val();
+    if (!data || !ftStatusMatchesCurrentCall(data)) return;
+    if (ftCallState !== "active" && ftCallState !== "connecting") return;
+    if (data.status === "ended" || data.status === "cancelled" || data.status === "rejected") {
+      void ftEndCall("ended");
+    }
+  };
+  onValue(statusRef, onStatus);
+  ftUnsubs.push(() => off(statusRef));
 }
 
 async function ftClearSignal(path) {
@@ -567,12 +633,14 @@ function ftWatchOutgoingInvite(myUid, friendUid) {
     const onInvite = (snap) => {
       const data = snap.val();
       if (!data || ftRole !== "caller") return;
-      if (data.status === "accepted" && (ftCallState === "outgoing" || ftCallState === "connecting")) {
-        if (ftCallState === "outgoing") void ftBeginWebRtc("caller");
-      } else if (data.status === "rejected" || data.status === "cancelled") {
-        void ftEndCall(data.status === "rejected" ? "declined" : "cancelled");
-      } else if (data.status === "ended") {
-        void ftEndCall("ended");
+      if (!ftStatusMatchesCurrentCall(data)) return;
+      if (data.status === "accepted" && ftCallState === "outgoing" && !ftRtcStarted) {
+        void ftBeginWebRtc("caller");
+      } else if (
+        ftCallState !== "idle" &&
+        (data.status === "rejected" || data.status === "cancelled" || data.status === "ended")
+      ) {
+        void ftEndCall(data.status === "rejected" ? "declined" : data.status === "cancelled" ? "cancelled" : "ended");
       }
     };
     const onInviteErr = (err) => {
@@ -581,32 +649,6 @@ function ftWatchOutgoingInvite(myUid, friendUid) {
     };
     onValue(inviteRef, onInvite, onInviteErr);
     ftUnsubs.push(() => off(inviteRef));
-  });
-}
-
-function ftWatchActiveInvite(myUid, friendUid) {
-  const rtdb = ftGetRtdb();
-  if (!rtdb) return;
-  void ftLoadDb().then(({ ref, onValue, off }) => {
-    const inviteRef = ref(rtdb, ftInvitePath(friendUid, myUid));
-    const onInvite = (snap) => {
-      const data = snap.val();
-      if (!data || (ftCallState !== "active" && ftCallState !== "connecting")) return;
-      if (data.status === "ended" || data.status === "rejected" || data.status === "cancelled") {
-        void ftEndCall("ended");
-      }
-    };
-    onValue(inviteRef, onInvite);
-    ftUnsubs.push(() => off(inviteRef));
-
-    const reverseRef = ref(rtdb, ftInvitePath(myUid, friendUid));
-    const onReverse = (snap) => {
-      const data = snap.val();
-      if (!data || (ftCallState !== "active" && ftCallState !== "connecting")) return;
-      if (data.status === "ended") void ftEndCall("ended");
-    };
-    onValue(reverseRef, onReverse);
-    ftUnsubs.push(() => off(reverseRef));
   });
 }
 
@@ -628,7 +670,7 @@ async function ftStartOutgoingCall(myUid, friendUid, friendName) {
     ftCallState = "outgoing";
     ftMuted = false;
 
-    await ftClearRtcOnly(ftSignalPath);
+    await ftPrepareNewCall(myUid, friendUid);
     await ftSetCallStatus("ringing", { fromName: friendName || "Friend" });
     await ftSetInviteStatus(friendUid, myUid, "ringing", {
       fromName: friendName || "Friend"
@@ -669,6 +711,7 @@ async function ftAcceptCall(fromUid, fromName, myUidOverride) {
     ftSessionId = invite?.sessionId || `ft_${Date.now()}`;
     ftCallState = "connecting";
 
+    await ftPrepareNewCall(myUid, fromUid);
     await ftSetCallStatus("accepted", {
       fromName: invite?.fromName || fromName || "Friend"
     });
@@ -739,10 +782,12 @@ async function ftEndCall(reason = "ended") {
   }
 
   ftClearConnectTimer();
+  ftClearDisconnectTimer();
   ftStopCallPoll();
   ftStopUnsubs();
   ftConnected = false;
   ftRtcStarted = false;
+  ftIceRestarted = false;
   ftHandlingOffer = false;
   ftResetIceQueue();
   if (ftStream) {
@@ -795,7 +840,7 @@ function ftStartIncomingListener(myUid) {
           child.key === ftFriendUid &&
           (data.status === "cancelled" || data.status === "ended" || data.status === "rejected")
         ) {
-          void ftEndCall("cancelled");
+          if (ftStatusMatchesCurrentCall(data)) void ftEndCall("cancelled");
           return;
         }
         if (ftCallState !== "idle" || data.status !== "ringing") return;
