@@ -1344,6 +1344,38 @@
     .voice-call-btn-circle.cancel {
       background: rgba(255, 255, 255, 0.16);
     }
+    .voice-call-btn-circle.share {
+      background: rgba(96, 165, 250, 0.35);
+    }
+    .voice-call-video-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 320px;
+      margin: 0 auto 12px;
+      aspect-ratio: 3 / 4;
+      border-radius: 16px;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.35);
+      display: none;
+    }
+    .voice-call-video-wrap.show { display: block; }
+    .friend-call-remote-video,
+    .friend-call-local-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
+    }
+    .friend-call-local-video {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      width: 88px;
+      height: 118px;
+      border-radius: 10px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      z-index: 2;
+    }
     .friend-chat-box {
       margin-top: 10px;
       border: 1px solid var(--border);
@@ -1670,6 +1702,10 @@
 
   <div id="voiceCallScreen" class="voice-call-screen" aria-hidden="true">
     <div class="voice-call-top">
+      <div id="voiceCallVideoWrap" class="voice-call-video-wrap">
+        <video id="voiceCallRemoteVideo" class="friend-call-remote-video" playsinline autoplay></video>
+        <video id="voiceCallLocalVideo" class="friend-call-local-video" playsinline autoplay muted></video>
+      </div>
       <div class="voice-call-avatar" id="voiceCallAvatar">?</div>
       <div class="voice-call-name" id="voiceCallName">Friend</div>
       <div class="voice-call-status" id="voiceCallStatus">Calling…</div>
@@ -1696,6 +1732,10 @@
         <button type="button" class="voice-call-btn" onclick="toggleVoiceCallMute()">
           <span class="voice-call-btn-circle mute" id="voiceCallMuteBtn">🎤</span>
           <span id="voiceCallMuteLabel">Mute</span>
+        </button>
+        <button type="button" class="voice-call-btn" onclick="toggleVoiceCallScreenShare()">
+          <span class="voice-call-btn-circle share" id="voiceCallShareBtn">🖥</span>
+          <span id="voiceCallShareLabel">Share</span>
         </button>
         <button type="button" class="voice-call-btn" onclick="endVoiceCall()">
           <span class="voice-call-btn-circle end">📵</span>
@@ -1885,11 +1925,12 @@
         Friends
       </button>
       <div id="friendPanel" class="menu-panel">
-        <p class="profile-hint" style="margin:0 0 8px;text-align:left;">Friend ayite <strong>Call</strong> — WhatsApp / Messenger laaga in-app voice call. Phone number avasaram ledu.</p>
+        <p class="profile-hint" style="margin:0 0 8px;text-align:left;">WhatsApp / Instagram laaga — <strong>Audio</strong>, <strong>Video</strong>, <strong>Chat</strong>, screen share. Search: @ID, email, phone, name. App lekapothe <strong>Invite</strong>.</p>
         <div class="channel-search-wrap">
           <svg class="channel-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="search" id="friendSearch" class="channel-search" placeholder="Search @User ID, email, or name" oninput="searchFriends()" onkeydown="onFriendSearchKeydown(event)" autocomplete="off">
+          <input type="search" id="friendSearch" class="channel-search" placeholder="Search @ID, email, phone, or name" oninput="searchFriends()" onkeydown="onFriendSearchKeydown(event)" autocomplete="off">
         </div>
+        <button type="button" class="btn btn-sm" style="width:100%;margin-bottom:8px;" onclick="inviteToWalkieApp()">Invite friend to app (WhatsApp / SMS)</button>
         <div class="channel-list menu-channel-list" id="friendList"></div>
         <div id="friendChatBox" class="friend-chat-box" style="display:none;">
           <div class="friend-chat-head">

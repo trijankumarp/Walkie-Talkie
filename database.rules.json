@@ -84,6 +84,18 @@
         }
       }
     },
+    "friendCallSessions": {
+      "$sessionId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+    "publicUsersByPhone": {
+      ".read": "auth != null",
+      "$phone": {
+        ".write": "auth != null && newData.val() === auth.uid"
+      }
+    },
     "friendIncomingCalls": {
       "$toUid": {
         ".read": "auth != null && auth.uid === $toUid",

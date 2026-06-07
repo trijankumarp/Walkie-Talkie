@@ -31,6 +31,8 @@ const USER_SETTINGS_PATH = "userSettings";
 const PUBLIC_USERS_PATH = "publicUsers";
 const PUBLIC_USERS_BY_UID_PATH = "publicUsersByUid";
 const PUBLIC_USERS_BY_EMAIL_PATH = "publicUsersByEmail";
+const PUBLIC_USERS_BY_PHONE_PATH = "publicUsersByPhone";
+const APP_INVITE_BASE_URL = "https://walkie-talkie-kappa.vercel.app/walkie.html";
 const FRIEND_REQUESTS_PATH = "friendRequests";
 const FRIEND_REQUEST_SENT_PATH = "friendRequestSent";
 const USER_FRIENDS_PATH = "userFriends";
@@ -1427,17 +1429,27 @@ function setVoiceCallPanel(mode, name) {
   if (outgoing) outgoing.style.display = mode === "outgoing" ? "" : "none";
   if (incoming) incoming.style.display = mode === "incoming" ? "" : "none";
   if (active) active.style.display = mode === "active" ? "" : "none";
-  if (statusEl) {
+  if (statusEl && !statusEl.dataset.userSet) {
     statusEl.textContent =
       mode === "outgoing"
         ? "Calling…"
         : mode === "incoming"
-          ? "Incoming voice call"
+          ? "Incoming call"
           : mode === "connecting"
             ? "Connecting…"
             : mode === "active"
               ? "On call"
               : "";
+  }
+  if (mode === "hidden") {
+    if (statusEl) delete statusEl.dataset.userSet;
+    const wrap = document.getElementById("voiceCallVideoWrap");
+    if (wrap) wrap.classList.remove("show");
+    const localVid = document.getElementById("voiceCallLocalVideo");
+    const remoteVid = document.getElementById("voiceCallRemoteVideo");
+    if (localVid) localVid.srcObject = null;
+    if (remoteVid) remoteVid.srcObject = null;
+    if (avatar) avatar.style.display = "";
   }
 }
 
@@ -1446,6 +1458,47 @@ function updateVoiceCallMuteUi(muted) {
   const label = document.getElementById("voiceCallMuteLabel");
   if (btn) btn.classList.toggle("on", !!muted);
   if (label) label.textContent = muted ? "Unmute" : "Mute";
+}
+
+function updateVoiceCallShareUi(active) {
+  const btn = document.getElementById("voiceCallShareBtn");
+  const label = document.getElementById("voiceCallShareLabel");
+  if (btn) btn.classList.toggle("on", !!active);
+  if (label) label.textContent = active ? "Stop" : "Share";
+}
+
+function getAppInviteLink() {
+  const uid = loggedInUser?.uid;
+  const userId = getProfileUid();
+  const url = new URL(APP_INVITE_BASE_URL);
+  if (userId) url.searchParams.set("ref", userId);
+  if (uid) url.searchParams.set("from", uid);
+  return url.toString();
+}
+
+function getAppInviteMessage() {
+  const name = getFullName(loggedInUser) || loggedInUser?.name || "I";
+  return `${name} invited you to Walkie Talkie — chat, audio & video calls like WhatsApp. Join: ${getAppInviteLink()}`;
+}
+
+async function inviteToWalkieApp() {
+  const text = getAppInviteMessage();
+  const shareData = { title: "Walkie Talkie invite", text, url: getAppInviteLink() };
+  try {
+    if (navigator.share) {
+      await navigator.share(shareData);
+      setFriendMsg("Invite shared.");
+      return;
+    }
+  } catch (err) {
+    if (err?.name === "AbortError") return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    setFriendMsg("Invite link copied. Paste in WhatsApp / SMS.");
+  } catch {
+    setFriendMsg(text);
+  }
 }
 
 function handleFriendTalkUi(event, meta = {}) {
@@ -1464,8 +1517,15 @@ function handleFriendTalkUi(event, meta = {}) {
     const f = findFriendByUid(meta.fromUid);
     activeFriend = f || { uid: meta.fromUid, displayName: meta.fromName, label: meta.fromName };
     setVoiceCallPanel("incoming", meta.fromName || "Friend");
+    const statusEl = document.getElementById("voiceCallStatus");
+    if (statusEl) {
+      statusEl.textContent =
+        meta.callMode === "video" ? "Incoming video call" : "Incoming voice call";
+    }
     startVoiceCallRing();
-    showFriendRequestToast(`${meta.fromName || "Friend"} is calling…`);
+    showFriendRequestToast(
+      `${meta.fromName || "Friend"} is calling${meta.callMode === "video" ? " (video)" : ""}…`
+    );
     return;
   }
   if (event === "connecting") {
@@ -1481,10 +1541,26 @@ function handleFriendTalkUi(event, meta = {}) {
     const label = getActiveFriendLabel() || "Friend";
     setVoiceCallPanel("active", label);
     updateVoiceCallMuteUi(false);
+    updateVoiceCallShareUi(false);
+    if (meta.callMode === "video") {
+      document.getElementById("voiceCallVideoWrap")?.classList.add("show");
+      document.getElementById("voiceCallAvatar")?.style && (document.getElementById("voiceCallAvatar").style.display = "none");
+    }
     startVoiceCallTimer();
     refreshStatusBar();
     updatePttHint();
     renderFriends();
+    return;
+  }
+  if (event === "remoteVideo" || event === "localPreview") {
+    if (meta.callMode === "video" || meta.active) {
+      document.getElementById("voiceCallVideoWrap")?.classList.add("show");
+      document.getElementById("voiceCallAvatar")?.style && (document.getElementById("voiceCallAvatar").style.display = "none");
+    }
+    return;
+  }
+  if (event === "screenShare") {
+    updateVoiceCallShareUi(!!meta.active);
     return;
   }
   if (event === "mute") {
@@ -1531,6 +1607,8 @@ function setupFriendTalkUi() {
     const statusEl = document.getElementById("voiceCallStatus");
     if (statusEl && document.getElementById("voiceCallScreen")?.classList.contains("open")) {
       statusEl.textContent = text;
+      if (text) statusEl.dataset.userSet = "1";
+      else delete statusEl.dataset.userSet;
     }
     refreshStatusBar();
     updatePttHint();
@@ -1538,7 +1616,7 @@ function setupFriendTalkUi() {
   });
 }
 
-async function startFriendVoiceCall(index) {
+async function startFriendCall(index, options = {}) {
   const f = friends[index];
   if (!f?.uid) return setFriendMsg("Friend not available.", true);
   if (window.friendTalk?.isInCall?.()) {
@@ -1549,19 +1627,28 @@ async function startFriendVoiceCall(index) {
     return setFriendMsg("Already on a call.", true);
   }
   if (!navigator.onLine) {
-    return setFriendMsg("Voice call needs internet.", true);
+    return setFriendMsg("Call needs internet.", true);
   }
   setupFriendTalkUi();
   activeFriend = f;
   const ok = await window.friendTalk?.startOutgoingCall?.(
     loggedInUser.uid,
     f.uid,
-    friendDisplayLabel(f)
+    friendDisplayLabel(f),
+    options
   );
   if (ok) {
     closeMenu();
     renderFriends();
   }
+}
+
+async function startFriendVoiceCall(index) {
+  await startFriendCall(index, { video: false });
+}
+
+async function startFriendVideoCall(index) {
+  await startFriendCall(index, { video: true });
 }
 
 async function acceptIncomingVoiceCall() {
@@ -1597,6 +1684,17 @@ async function endVoiceCall() {
 function toggleVoiceCallMute() {
   const muted = window.friendTalk?.toggleMute?.();
   updateVoiceCallMuteUi(!!muted);
+}
+
+async function toggleVoiceCallScreenShare() {
+  const active = document.getElementById("voiceCallShareBtn")?.classList.contains("on");
+  if (active) {
+    await window.friendTalk?.stopScreenShare?.();
+    updateVoiceCallShareUi(false);
+    return;
+  }
+  const ok = await window.friendTalk?.startScreenShare?.();
+  updateVoiceCallShareUi(!!ok);
 }
 
 function friendRecordFromRequest(req, prefix) {
@@ -1762,15 +1860,24 @@ function buildPublicProfilePayload(uid) {
   if (!userId) return null;
   const displayName = getFullName(loggedInUser) || loggedInUser?.name || "";
   const email = (loggedInUser?.email || "").toLowerCase();
+  const phoneE164 = getMobileE164(uid) || "";
   return {
     uid,
     userId,
     displayName,
     displayNameLower: displayName.toLowerCase(),
     emailLower: email,
+    phoneE164,
     avatar: getStoredAvatar() || "",
     updatedAt: Date.now()
   };
+}
+
+function normalizePhoneQuery(query) {
+  const digits = String(query || "").replace(/\D/g, "");
+  if (!digits || digits.length < 8) return null;
+  if (String(query).trim().startsWith("+")) return `+${digits}`;
+  return `+${digits}`;
 }
 
 async function loadProfileFromCloud(uid) {
@@ -1830,11 +1937,22 @@ async function publishMyPublicProfile() {
     if (oldEmail && oldEmail !== payload.emailLower) {
       await set(ref(rtdb, `${PUBLIC_USERS_BY_EMAIL_PATH}/${encodeRtdbKey(oldEmail)}`), null);
     }
+    const oldPhoneSnap = await get(ref(rtdb, `${USER_SETTINGS_PATH}/${uid}/phoneE164`));
+    const oldPhone = oldPhoneSnap.val();
+    if (oldPhone && oldPhone !== payload.phoneE164) {
+      await set(ref(rtdb, `${PUBLIC_USERS_BY_PHONE_PATH}/${encodeRtdbKey(oldPhone)}`), null);
+    }
     await set(ref(rtdb, `${PUBLIC_USERS_PATH}/${encodeRtdbKey(payload.userId)}`), payload);
     await set(ref(rtdb, `${PUBLIC_USERS_BY_UID_PATH}/${uid}`), payload.userId);
     if (payload.emailLower) {
       await set(ref(rtdb, `${PUBLIC_USERS_BY_EMAIL_PATH}/${encodeRtdbKey(payload.emailLower)}`), uid);
     }
+    if (payload.phoneE164) {
+      await set(ref(rtdb, `${PUBLIC_USERS_BY_PHONE_PATH}/${encodeRtdbKey(payload.phoneE164)}`), uid);
+    }
+    await update(ref(rtdb, `${USER_SETTINGS_PATH}/${uid}`), {
+      phoneE164: payload.phoneE164 || null
+    });
     await update(ref(rtdb, `${USER_SETTINGS_PATH}/${uid}`), {
       userId: payload.userId,
       displayName: payload.displayName,
@@ -1977,7 +2095,7 @@ function renderFriends() {
       friendSearchResults.forEach((profile) => renderFriendSearchItem(container, profile));
     } else if (!visibleFriends.length) {
       container.innerHTML =
-        '<div class="channel-empty">No users found.<br>Try @User ID, full email, or name (2+ letters). Friend must login once so profile is online.</div>';
+        '<div class="channel-empty">No users found.<br>Try @User ID, email, phone, or name. If they don\'t use the app yet, tap <strong>Invite friend to app</strong> above.</div>';
       return;
     }
   }
@@ -2045,6 +2163,20 @@ async function runFriendSearch(query) {
       if (snap.exists()) pushFriendSearchResult(results, seen, snap.val(), myUid);
     }
 
+    const phoneQuery = normalizePhoneQuery(query);
+    if (phoneQuery) {
+      const phoneSnap = await get(ref(rtdb, `${PUBLIC_USERS_BY_PHONE_PATH}/${encodeRtdbKey(phoneQuery)}`));
+      if (phoneSnap.exists()) {
+        const uid = phoneSnap.val();
+        const handleSnap = await get(ref(rtdb, `${PUBLIC_USERS_BY_UID_PATH}/${uid}`));
+        const handle = handleSnap.val();
+        if (handle) {
+          const profileSnap = await get(ref(rtdb, `${PUBLIC_USERS_PATH}/${encodeRtdbKey(handle)}`));
+          if (profileSnap.exists()) pushFriendSearchResult(results, seen, profileSnap.val(), myUid);
+        }
+      }
+    }
+
     if (query.includes("@")) {
       const emailSnap = await get(ref(rtdb, `${PUBLIC_USERS_BY_EMAIL_PATH}/${encodeRtdbKey(query)}`));
       if (emailSnap.exists()) {
@@ -2077,8 +2209,10 @@ async function runFriendSearch(query) {
       allSnap.forEach((child) => {
         const data = child.val();
         if (!data?.uid || data.uid === myUid || seen.has(data.uid)) return;
-        const hay = `${data.displayNameLower || ""} ${data.userId || ""} ${data.emailLower || ""}`;
-        if (hay.includes(query)) pushFriendSearchResult(results, seen, data, myUid);
+        const hay = `${data.displayNameLower || ""} ${data.userId || ""} ${data.emailLower || ""} ${data.phoneE164 || ""}`;
+        if (hay.includes(query) || (phoneQuery && data.phoneE164 === phoneQuery)) {
+          pushFriendSearchResult(results, seen, data, myUid);
+        }
       });
     }
 
@@ -2254,7 +2388,8 @@ function renderFriendListItem(container, f, realIndex) {
       ${activeFriend?.uid === f.uid && window.friendTalk?.isInCall?.() ? `<span class="channel-meta">On call</span>` : ""}
     </div>
     <div class="friend-row-actions">
-      <button type="button" class="friend-action-btn${activeFriend?.uid === f.uid && window.friendTalk?.isInCall?.() ? " active" : ""}" data-talk="${realIndex}" title="Voice call (like WhatsApp)">Call</button>
+      <button type="button" class="friend-action-btn${activeFriend?.uid === f.uid && window.friendTalk?.isInCall?.() ? " active" : ""}" data-talk="${realIndex}" title="Audio call">Audio</button>
+      <button type="button" class="friend-action-btn" data-video="${realIndex}" title="Video call">Video</button>
       <button type="button" class="friend-action-btn${activeChatFriend?.uid === f.uid ? " active" : ""}" data-chat="${realIndex}">Chat</button>
       <button type="button" class="delete-btn" title="Remove friend" data-remove="${realIndex}">🗑</button>
     </div>
@@ -2262,6 +2397,10 @@ function renderFriendListItem(container, f, realIndex) {
   div.querySelector("[data-talk]")?.addEventListener("click", (e) => {
     e.stopPropagation();
     void startFriendVoiceCall(realIndex);
+  });
+  div.querySelector("[data-video]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void startFriendVideoCall(realIndex);
   });
   div.querySelector("[data-chat]")?.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -4321,11 +4460,14 @@ Object.assign(window, {
   startFriendTalk,
   stopFriendTalk,
   startFriendVoiceCall,
+  startFriendVideoCall,
+  inviteToWalkieApp,
   acceptIncomingVoiceCall,
   declineIncomingVoiceCall,
   cancelVoiceCall,
   endVoiceCall,
   toggleVoiceCallMute,
+  toggleVoiceCallScreenShare,
   openFriendChat,
   closeFriendChat,
   sendFriendChat,
