@@ -1141,6 +1141,114 @@
       color: var(--text-muted);
       flex-shrink: 0;
     }
+    .friend-row-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .friend-action-btn {
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--accent-soft);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .friend-action-btn:hover { border-color: var(--text-muted); }
+    .friend-action-btn.active {
+      background: var(--text);
+      color: var(--bg-card);
+      border-color: var(--text);
+    }
+    html[data-theme="dark"] .friend-action-btn.active {
+      background: #fafafa;
+      color: #171717;
+    }
+    .friend-chat-box {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--bg-panel);
+      overflow: hidden;
+    }
+    .friend-chat-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .friend-chat-close {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .friend-chat-messages {
+      max-height: 160px;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .friend-chat-bubble {
+      max-width: 85%;
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .friend-chat-bubble.mine {
+      align-self: flex-end;
+      background: var(--text);
+      color: var(--bg-card);
+    }
+    html[data-theme="dark"] .friend-chat-bubble.mine {
+      background: #fafafa;
+      color: #171717;
+    }
+    .friend-chat-bubble.theirs {
+      align-self: flex-start;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+    }
+    .friend-chat-input-row {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .friend-chat-input-row input {
+      flex: 1;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: var(--bg-card);
+      color: var(--text);
+      font-size: 14px;
+    }
+    .friend-chat-send {
+      padding: 10px 14px;
+      border: none;
+      border-radius: 8px;
+      background: var(--text);
+      color: var(--bg-card);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    html[data-theme="dark"] .friend-chat-send {
+      background: #fafafa;
+      color: #171717;
+    }
     .menu-theme-row .theme-toggle {
       width: 36px;
       height: 36px;
@@ -1565,6 +1673,17 @@
           <input type="search" id="friendSearch" class="channel-search" placeholder="Search @User ID, email, or name" oninput="searchFriends()" onkeydown="onFriendSearchKeydown(event)" autocomplete="off">
         </div>
         <div class="channel-list menu-channel-list" id="friendList"></div>
+        <div id="friendChatBox" class="friend-chat-box" style="display:none;">
+          <div class="friend-chat-head">
+            <span id="friendChatTitle">Chat</span>
+            <button type="button" class="friend-chat-close" onclick="closeFriendChat()" aria-label="Close chat">×</button>
+          </div>
+          <div id="friendChatMessages" class="friend-chat-messages"></div>
+          <div class="friend-chat-input-row">
+            <input type="text" id="friendChatInput" placeholder="Type a message…" onkeydown="onFriendChatKeydown(event)" autocomplete="off">
+            <button type="button" class="friend-chat-send" onclick="sendFriendChat()">Send</button>
+          </div>
+        </div>
         <p id="friendMsg" class="profile-msg"></p>
       </div>
     </div>
@@ -1609,6 +1728,7 @@
 
   <script src="firebase-config.js"></script>
   <script src="offline-talk.js"></script>
+  <script src="friend-talk.js"></script>
   <script type="module" src="auth.js"></script>
   <script type="module" src="app.js"></script>
 </body>

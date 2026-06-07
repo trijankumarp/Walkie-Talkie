@@ -19,7 +19,9 @@ import {
   orderByChild,
   equalTo,
   startAt,
-  endAt
+  endAt,
+  push,
+  remove
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
 
 const CHANNELS_LEGACY_KEY = "walkie_channels_v1";
@@ -32,6 +34,7 @@ const PUBLIC_USERS_BY_EMAIL_PATH = "publicUsersByEmail";
 const FRIEND_REQUESTS_PATH = "friendRequests";
 const FRIEND_REQUEST_SENT_PATH = "friendRequestSent";
 const USER_FRIENDS_PATH = "userFriends";
+const FRIEND_CHATS_PATH = "friendChats";
 const RTDB_KEY_DOT = ",";
 const CHANNEL_STALE_MS = 5 * 60 * 1000;
 const THEME_KEY = "walkie_theme_v1";
@@ -122,6 +125,12 @@ let userFriendsRtdbRef = null;
 let friendRequestsReady = false;
 let lastFriendRequestCount = 0;
 let friendToastTimer = null;
+let activeFriend = null;
+let activeChatFriend = null;
+let friendChatMessages = [];
+let friendChatRtdbRef = null;
+let friendChatReady = false;
+let lastFriendChatCount = 0;
 let selectedBtId = null;
 let savedBtDevices = [];
 let nearbyChannels = [];
@@ -326,16 +335,29 @@ function getActiveChannelTalkLabel() {
   return meta ? `${ch.name} · ${meta}` : ch.name;
 }
 
+function getActiveFriendLabel() {
+  if (!activeFriend) return null;
+  return friendDisplayLabel(activeFriend);
+}
+
 function updatePttHint() {
   const hint = document.getElementById("pttHint");
   if (!hint) return;
+  const friendLabel = getActiveFriendLabel();
+  if (friendLabel) {
+    const connected = window.friendTalk?.isActive?.();
+    hint.textContent = connected
+      ? `Hold to talk with ${friendLabel}`
+      : `Connecting to ${friendLabel}… tap Talk if needed`;
+    return;
+  }
   const label = getActiveChannelTalkLabel();
   hint.textContent = label
     ? `Hold to talk on ${label}`
     : window.offlineTalk?.isActive?.()
       ? "Hold to talk — offline (no internet)"
       : isOnlineWalkieMode()
-        ? "Net on — Channel select, Hold to talk (no WiFi)"
+        ? "Net on — pick Friend Talk or Channel, then Hold to talk"
         : "Offline — Bluetooth required, then Hold to talk";
 }
 
@@ -1624,16 +1646,7 @@ function renderFriends() {
 
   if (visibleFriends.length) {
     if (isSearching) appendFriendSectionLabel(container, "Your friends");
-    visibleFriends.forEach((f) => {
-      const realIndex = friends.indexOf(f);
-      const div = document.createElement("div");
-      div.className = "channel-item";
-      div.innerHTML = `
-        <span class="channel-name">${escapeHtml(friendDisplayLabel(f))}</span>
-        <button type="button" class="delete-btn" title="Remove friend" onclick="removeFriend(${realIndex}); event.stopPropagation();">🗑</button>
-      `;
-      container.appendChild(div);
-    });
+    visibleFriends.forEach((f) => renderFriendListItem(container, f, friends.indexOf(f)));
   } else if (!isSearching && !incomingFriendRequests.length && !outgoingFriendRequests.length) {
     container.innerHTML =
       '<div class="channel-empty">No friends yet.<br>Search and send a request — they get it in seconds.</div>';
@@ -1865,6 +1878,8 @@ function addFriendFromSearch(profile) {
 async function removeFriend(index) {
   const f = friends[index];
   if (!f) return;
+  if (f.uid === activeFriend?.uid) await stopFriendTalk();
+  if (f.uid === activeChatFriend?.uid) closeFriendChat();
   const rtdb = getRealtimeDb();
   const myUid = loggedInUser?.uid;
   if (rtdb && myUid && f.uid) {
@@ -1892,6 +1907,184 @@ function onFriendSearchKeydown(e) {
     return;
   }
   void sendFriendRequest(first);
+}
+
+function getFriendChatPath(uid1, uid2) {
+  const [a, b] = [uid1, uid2].sort();
+  return `${FRIEND_CHATS_PATH}/${a}/${b}/messages`;
+}
+
+function renderFriendListItem(container, f, realIndex) {
+  const div = document.createElement("div");
+  div.className = "channel-item" + (activeFriend?.uid === f.uid ? " active" : "");
+  div.innerHTML = `
+    <div class="channel-info">
+      <span class="channel-name">${escapeHtml(friendDisplayLabel(f))}</span>
+      ${activeChatFriend?.uid === f.uid ? `<span class="channel-meta">Chat open</span>` : ""}
+    </div>
+    <div class="friend-row-actions">
+      <button type="button" class="friend-action-btn${activeFriend?.uid === f.uid ? " active" : ""}" data-talk="${realIndex}">Talk</button>
+      <button type="button" class="friend-action-btn${activeChatFriend?.uid === f.uid ? " active" : ""}" data-chat="${realIndex}">Chat</button>
+      <button type="button" class="delete-btn" title="Remove friend" data-remove="${realIndex}">🗑</button>
+    </div>
+  `;
+  div.querySelector("[data-talk]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void startFriendTalk(realIndex);
+  });
+  div.querySelector("[data-chat]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openFriendChat(realIndex);
+  });
+  div.querySelector("[data-remove]")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void removeFriend(realIndex);
+  });
+  container.appendChild(div);
+}
+
+function stopFriendChatListener() {
+  if (friendChatRtdbRef) {
+    off(friendChatRtdbRef);
+    friendChatRtdbRef = null;
+  }
+  friendChatReady = false;
+  lastFriendChatCount = 0;
+}
+
+function renderFriendChatMessages() {
+  const box = document.getElementById("friendChatMessages");
+  if (!box) return;
+  const myUid = loggedInUser?.uid;
+  if (!friendChatMessages.length) {
+    box.innerHTML = '<div class="channel-empty" style="padding:12px;">No messages yet. Say hi!</div>';
+    return;
+  }
+  box.innerHTML = "";
+  friendChatMessages.forEach((m) => {
+    const div = document.createElement("div");
+    div.className = "friend-chat-bubble " + (m.fromUid === myUid ? "mine" : "theirs");
+    div.textContent = m.text || "";
+    box.appendChild(div);
+  });
+  box.scrollTop = box.scrollHeight;
+}
+
+function startFriendChatListener(friendUid) {
+  const rtdb = getRealtimeDb();
+  const myUid = loggedInUser?.uid;
+  if (!rtdb || !myUid || !friendUid) return;
+  stopFriendChatListener();
+  friendChatRtdbRef = ref(rtdb, getFriendChatPath(myUid, friendUid));
+  onValue(friendChatRtdbRef, (snap) => {
+    if (!isLoggedIn || loggedInUser?.uid !== myUid) return;
+    const list = [];
+    snap.forEach((child) => {
+      const data = child.val();
+      if (data) list.push({ id: child.key, ...data });
+    });
+    list.sort((a, b) => Number(a.sentAt || 0) - Number(b.sentAt || 0));
+    if (friendChatReady && list.length > lastFriendChatCount) {
+      const newest = list[list.length - 1];
+      if (newest.fromUid !== myUid && activeChatFriend?.uid !== friendUid) {
+        const name = activeChatFriend ? friendDisplayLabel(activeChatFriend) : "Friend";
+        showFriendRequestToast(`${name}: ${(newest.text || "").slice(0, 60)}`);
+      }
+    }
+    friendChatReady = true;
+    lastFriendChatCount = list.length;
+    friendChatMessages = list;
+    if (activeChatFriend?.uid === friendUid) renderFriendChatMessages();
+  });
+}
+
+function openFriendChat(index) {
+  const f = friends[index];
+  if (!f) return;
+  activeChatFriend = f;
+  const box = document.getElementById("friendChatBox");
+  const title = document.getElementById("friendChatTitle");
+  if (box) box.style.display = "block";
+  if (title) title.textContent = `Chat · ${friendDisplayLabel(f)}`;
+  friendChatMessages = [];
+  friendChatReady = false;
+  lastFriendChatCount = 0;
+  startFriendChatListener(f.uid);
+  renderFriendChatMessages();
+  renderFriends();
+  document.getElementById("friendChatInput")?.focus();
+}
+
+function closeFriendChat() {
+  activeChatFriend = null;
+  stopFriendChatListener();
+  friendChatMessages = [];
+  const box = document.getElementById("friendChatBox");
+  if (box) box.style.display = "none";
+  renderFriends();
+}
+
+async function sendFriendChat() {
+  const input = document.getElementById("friendChatInput");
+  const text = input?.value.trim();
+  if (!text || !activeChatFriend?.uid) return;
+  const rtdb = getRealtimeDb();
+  const myUid = loggedInUser?.uid;
+  if (!rtdb || !myUid) return setFriendMsg("Chat needs internet + Firebase.", true);
+  try {
+    const msgRef = push(ref(rtdb, getFriendChatPath(myUid, activeChatFriend.uid)));
+    await set(msgRef, {
+      fromUid: myUid,
+      text,
+      sentAt: Date.now()
+    });
+    input.value = "";
+  } catch (err) {
+    setFriendMsg(mapSyncError(err), true);
+  }
+}
+
+function onFriendChatKeydown(e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    void sendFriendChat();
+  }
+}
+
+async function stopFriendTalk() {
+  await window.friendTalk?.disconnect?.();
+  activeFriend = null;
+  updatePttHint();
+  refreshStatusBar();
+  renderFriends();
+  setFriendMsg("Friend talk ended.");
+}
+
+async function startFriendTalk(index) {
+  const f = friends[index];
+  if (!f?.uid) return setFriendMsg("Friend not available.", true);
+  if (activeFriend?.uid === f.uid && (window.friendTalk?.isActive?.() || window.friendTalk?.isConnecting?.())) {
+    await stopFriendTalk();
+    return;
+  }
+  if (!navigator.onLine) {
+    return setFriendMsg("Friend talk needs internet. Use Bluetooth offline menu instead.", true);
+  }
+  activeFriend = f;
+  setFriendMsg(`Calling ${friendDisplayLabel(f)}…`);
+  window.friendTalk?.setStatusCallback?.((msg, isErr) => {
+    if (msg) setFriendMsg(msg, isErr);
+    refreshStatusBar();
+    updatePttHint();
+    renderFriends();
+  });
+  const ok = await window.friendTalk?.connect?.(loggedInUser.uid, f.uid);
+  if (ok) {
+    closeMenu();
+    updatePttHint();
+    refreshStatusBar();
+    renderFriends();
+  }
 }
 
 function setProfileMsg(msg, isError) {
@@ -2168,10 +2361,19 @@ function refreshStatusBar() {
   if (!loggedInUser || !isLoggedIn) return;
   const el = document.getElementById("statusMain");
   if (!el) return;
+  const friendLabel = getActiveFriendLabel();
+  if (friendLabel && window.friendTalk?.isActive?.()) {
+    el.innerHTML = `${loggedInUser.name} · <span class="accent">Talk · ${escapeHtml(friendLabel)}</span>`;
+    return;
+  }
+  if (friendLabel && window.friendTalk?.isConnecting?.()) {
+    el.innerHTML = `${loggedInUser.name} · <span style="color:var(--text-faint)">Calling ${escapeHtml(friendLabel)}…</span>`;
+    return;
+  }
   const ch = getActiveChannelName();
   el.innerHTML = ch
-    ? `${loggedInUser.name} · <span class="accent">${ch}</span>`
-    : `${loggedInUser.name} · <span style="color:var(--text-faint)">Select a channel in menu</span>`;
+    ? `${loggedInUser.name} · <span class="accent">${escapeHtml(ch)}</span>`
+    : `${loggedInUser.name} · <span style="color:var(--text-faint)">Friends → Talk or Channel</span>`;
 }
 
 function buildLoggedInUser(user) {
@@ -3422,6 +3624,19 @@ function isTypingInFormField() {
 
 async function startTalk(e) {
   if (e?.cancelable) e.preventDefault();
+  if (window.friendTalk?.isActive?.()) {
+    window.friendTalk.startTransmit();
+    isTalking = true;
+    setPttVisual(true);
+    const el = document.getElementById("statusMain");
+    const label = getActiveFriendLabel() || "Friend";
+    if (el) el.innerHTML = `<span class="accent">Live · Talk · ${escapeHtml(label)}</span>`;
+    return;
+  }
+  if (activeFriend && window.friendTalk?.isConnecting?.()) {
+    setFriendMsg("Connecting to friend… wait a few seconds.", true);
+    return;
+  }
   if (window.offlineTalk?.isActive?.()) {
     window.offlineTalk.startTransmit();
     isTalking = true;
@@ -3482,7 +3697,9 @@ async function startTalk(e) {
 function stopTalk(e) {
   if (e?.cancelable) e.preventDefault();
   if (!isTalking) return;
-  if (window.offlineTalk?.isActive?.()) {
+  if (window.friendTalk?.isActive?.()) {
+    window.friendTalk.stopTransmit();
+  } else if (window.offlineTalk?.isActive?.()) {
     window.offlineTalk.stopTransmit();
   } else if (pttMediaStream) {
     pttMediaStream.getAudioTracks().forEach((t) => {
@@ -3500,6 +3717,10 @@ async function logout() {
   currentChannel = null;
   stopChannelWifiSync();
   stopFriendListeners();
+  stopFriendChatListener();
+  closeFriendChat();
+  window.friendTalk?.cleanup?.();
+  activeFriend = null;
   window.offlineTalk?.cleanup?.();
   stopTalk();
   closeMenu();
@@ -3613,6 +3834,12 @@ Object.assign(window, {
   acceptFriendRequest,
   declineFriendRequest,
   cancelFriendRequest,
+  startFriendTalk,
+  stopFriendTalk,
+  openFriendChat,
+  closeFriendChat,
+  sendFriendChat,
+  onFriendChatKeydown,
   addFriendFromSearch,
   removeFriend,
   refreshWifiList,

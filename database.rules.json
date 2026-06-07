@@ -61,6 +61,26 @@
           ".write": "auth != null && (auth.uid === $uid || auth.uid === $friendUid)"
         }
       }
+    },
+    "friendChats": {
+      "$uidA": {
+        "$uidB": {
+          ".read": "auth != null && (auth.uid === $uidA || auth.uid === $uidB)",
+          "messages": {
+            "$msgId": {
+              ".write": "auth != null && (auth.uid === $uidA || auth.uid === $uidB) && newData.child('fromUid').val() === auth.uid"
+            }
+          }
+        }
+      }
+    },
+    "friendTalk": {
+      "$uidA": {
+        "$uidB": {
+          ".read": "auth != null && (auth.uid === $uidA || auth.uid === $uidB)",
+          ".write": "auth != null && (auth.uid === $uidA || auth.uid === $uidB)"
+        }
+      }
     }
   }
 }
