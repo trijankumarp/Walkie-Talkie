@@ -14,6 +14,8 @@ const CHANNELS_LEGACY_KEY = "walkie_channels_v1";
 const PUBLIC_CHANNELS_COLLECTION = "publicChannels";
 const USER_CHANNELS_PATH = "userChannels";
 const USER_SETTINGS_PATH = "userSettings";
+const PUBLIC_USERS_PATH = "publicUsers";
+const PUBLIC_USERS_BY_UID_PATH = "publicUsersByUid";
 const CHANNEL_STALE_MS = 5 * 60 * 1000;
 const THEME_KEY = "walkie_theme_v1";
 const BT_DEVICES_KEY = "walkie_bt_devices_v1";
@@ -91,6 +93,10 @@ let settingsPanelOpen = false;
 let friendPanelOpen = false;
 let channelPanelOpen = false;
 let friends = [];
+let friendSearchResults = [];
+let friendSearchLoading = false;
+let friendSearchError = "";
+let friendSearchTimer = null;
 let selectedBtId = null;
 let savedBtDevices = [];
 let nearbyChannels = [];
@@ -394,7 +400,11 @@ function toggleFriendPanel() {
   friendPanelOpen = !friendPanelOpen;
   document.getElementById("btnFriendAction")?.classList.toggle("selected", friendPanelOpen);
   document.getElementById("friendPanel")?.classList.toggle("open", friendPanelOpen);
-  if (friendPanelOpen) renderFriends();
+  if (friendPanelOpen) {
+    renderFriends();
+    const q = getFriendSearchQuery();
+    if (q.length >= 2) void runFriendSearch(q);
+  }
 }
 
 function toggleSettingsPanel() {
@@ -780,12 +790,16 @@ function saveProfileLanguage() {
   closeSettingsEditor();
 }
 
-function saveProfileUserId() {
+async function saveProfileUserId() {
   const raw = document.getElementById("profileUserId")?.value || "";
   const userId = normalizeUserId(raw);
   const err = validateUserId(userId);
   if (err) return setProfileMsg(err, true);
-  saveProfileExtra(getProfileUid(), { userId });
+  const uid = getProfileUid();
+  const available = await isUserIdAvailable(userId, uid);
+  if (!available) return setProfileMsg("This User ID is already taken. Pick another.", true);
+  saveProfileExtra(uid, { userId });
+  await publishMyPublicProfile();
   setProfileMsg("User ID saved.");
   closeSettingsEditor();
 }
@@ -843,6 +857,7 @@ function saveAvatar(data) {
   localStorage.setItem(`${PROFILE_AVATAR_KEY}_${uid}`, data);
   updateMenuAvatar();
   renderSettingsList();
+  void publishMyPublicProfile();
 }
 
 function resizeImageFile(file, maxSize, quality) {
@@ -1157,38 +1172,245 @@ function setFriendMsg(msg, isError) {
   el.className = "profile-msg" + (msg ? (isError ? " err" : " ok") : "");
 }
 
+function getFriendSearchQuery() {
+  return (document.getElementById("friendSearch")?.value || "").trim().toLowerCase().replace(/^@/, "");
+}
+
+function friendMatchesSearch(f, query) {
+  if (!query) return true;
+  const hay = `${f.displayName || ""} ${f.userId || ""} ${f.label || ""} ${f.email || ""}`.toLowerCase();
+  return hay.includes(query);
+}
+
+function friendDisplayLabel(f) {
+  if (f.displayName && f.userId) return `${f.displayName} (@${f.userId})`;
+  if (f.displayName) return f.displayName;
+  if (f.userId) return `@${f.userId}`;
+  return f.label || "Friend";
+}
+
+function isFriendAlready(profile) {
+  return friends.some(
+    (f) =>
+      (profile.uid && f.uid === profile.uid) ||
+      (profile.userId && f.userId === profile.userId) ||
+      (profile.email && f.email === profile.email) ||
+      (profile.label && f.label?.toLowerCase() === profile.label.toLowerCase())
+  );
+}
+
+function buildPublicProfilePayload(uid) {
+  const userId = getUserId(uid);
+  if (!userId || validateUserId(userId)) return null;
+  const displayName = getFullName(loggedInUser) || loggedInUser?.name || "";
+  const email = (loggedInUser?.email || "").toLowerCase();
+  return {
+    uid,
+    userId,
+    displayName,
+    displayNameLower: displayName.toLowerCase(),
+    emailLower: email,
+    avatar: getStoredAvatar() || "",
+    updatedAt: Date.now()
+  };
+}
+
+async function isUserIdAvailable(userId, uid) {
+  const rtdb = getRealtimeDb();
+  if (!rtdb) return true;
+  try {
+    const snap = await get(ref(rtdb, `${PUBLIC_USERS_PATH}/${userId}`));
+    if (!snap.exists()) return true;
+    return snap.val()?.uid === uid;
+  } catch {
+    return true;
+  }
+}
+
+async function publishMyPublicProfile() {
+  const uid = loggedInUser?.uid;
+  const rtdb = getRealtimeDb();
+  const payload = buildPublicProfilePayload(uid);
+  if (!uid || !rtdb || !payload) return false;
+  try {
+    const oldHandleSnap = await get(ref(rtdb, `${PUBLIC_USERS_BY_UID_PATH}/${uid}`));
+    const oldHandle = oldHandleSnap.val();
+    if (oldHandle && oldHandle !== payload.userId) {
+      await set(ref(rtdb, `${PUBLIC_USERS_PATH}/${oldHandle}`), null);
+    }
+    await set(ref(rtdb, `${PUBLIC_USERS_PATH}/${payload.userId}`), payload);
+    await set(ref(rtdb, `${PUBLIC_USERS_BY_UID_PATH}/${uid}`), payload.userId);
+    return true;
+  } catch (err) {
+    console.warn("Publish public profile failed", err);
+    return false;
+  }
+}
+
+function appendFriendSectionLabel(container, text) {
+  const label = document.createElement("div");
+  label.className = "channel-section-label";
+  label.textContent = text;
+  container.appendChild(label);
+}
+
+function renderFriendSearchItem(container, profile) {
+  const div = document.createElement("div");
+  div.className = "channel-item";
+  const name = profile.displayName || profile.userId || "User";
+  const sub = profile.userId ? `@${profile.userId}` : profile.emailLower || "";
+  const already = isFriendAlready(profile);
+  div.innerHTML = `
+    <div class="channel-info">
+      <span class="channel-name">${escapeHtml(name)}</span>
+      ${sub ? `<span class="channel-meta">${escapeHtml(sub)}</span>` : ""}
+    </div>
+    <button type="button" class="add-symbol" title="${already ? "Already added" : "Add friend"}" ${already ? "disabled" : ""} aria-label="Add friend">+</button>
+  `;
+  if (!already) {
+    div.querySelector(".add-symbol")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      addFriendFromSearch(profile);
+    });
+    div.addEventListener("click", () => addFriendFromSearch(profile));
+  }
+  container.appendChild(div);
+}
+
 function renderFriends() {
   const container = document.getElementById("friendList");
   if (!container) return;
-  if (!friends.length) {
-    container.innerHTML =
-      '<div class="channel-empty">No friends yet.<br>Add email or name above.</div>';
-    return;
-  }
   container.innerHTML = "";
-  friends.forEach((f, index) => {
-    const div = document.createElement("div");
-    div.className = "channel-item";
-    div.innerHTML = `
-      <span class="channel-name">${escapeHtml(f.label)}</span>
-      <button type="button" class="delete-btn" title="Remove friend" onclick="removeFriend(${index}); event.stopPropagation();">🗑</button>
-    `;
-    container.appendChild(div);
-  });
+  const query = getFriendSearchQuery();
+  const visibleFriends = friends.filter((f) => friendMatchesSearch(f, query));
+  const isSearching = query.length >= 2;
+
+  if (isSearching) {
+    if (friendSearchLoading) {
+      container.innerHTML = '<div class="channel-empty">Searching people…</div>';
+      return;
+    }
+    if (friendSearchError) {
+      container.innerHTML = `<div class="channel-empty">${friendSearchError}</div>`;
+      return;
+    }
+    if (friendSearchResults.length) {
+      appendFriendSectionLabel(container, "People");
+      friendSearchResults.forEach((profile) => renderFriendSearchItem(container, profile));
+    } else if (!visibleFriends.length) {
+      container.innerHTML =
+        '<div class="channel-empty">No users found.<br>Try @User ID, email, or name. Both users need internet + login.</div>';
+      return;
+    }
+  }
+
+  if (visibleFriends.length) {
+    if (isSearching) appendFriendSectionLabel(container, "Your friends");
+    visibleFriends.forEach((f) => {
+      const realIndex = friends.indexOf(f);
+      const div = document.createElement("div");
+      div.className = "channel-item";
+      div.innerHTML = `
+        <span class="channel-name">${escapeHtml(friendDisplayLabel(f))}</span>
+        <button type="button" class="delete-btn" title="Remove friend" onclick="removeFriend(${realIndex}); event.stopPropagation();">🗑</button>
+      `;
+      container.appendChild(div);
+    });
+  } else if (!isSearching) {
+    container.innerHTML =
+      '<div class="channel-empty">No friends yet.<br>Search by @User ID, email, or name above.</div>';
+  }
 }
 
-function addFriend() {
-  const input = document.getElementById("newFriendInput");
-  const val = input?.value.trim();
-  if (!val) return setFriendMsg("Enter friend email or name.", true);
-  if (friends.some((f) => f.label.toLowerCase() === val.toLowerCase())) {
+function searchFriends() {
+  clearTimeout(friendSearchTimer);
+  friendSearchTimer = setTimeout(() => {
+    void runFriendSearch(getFriendSearchQuery());
+  }, 300);
+  renderFriends();
+}
+
+async function runFriendSearch(query) {
+  if (!query || query.length < 2) {
+    friendSearchResults = [];
+    friendSearchLoading = false;
+    friendSearchError = "";
+    if (friendPanelOpen) renderFriends();
+    return;
+  }
+
+  const rtdb = getRealtimeDb();
+  if (!rtdb) {
+    friendSearchResults = [];
+    friendSearchLoading = false;
+    friendSearchError =
+      'Friend search needs Firebase Database. <a href="https://console.firebase.google.com/project/walkietalkie-mos/database" target="_blank" rel="noopener">Create Realtime Database</a> and publish <code>database.rules.json</code> rules.';
+    if (friendPanelOpen) renderFriends();
+    return;
+  }
+
+  friendSearchLoading = true;
+  friendSearchError = "";
+  if (friendPanelOpen) renderFriends();
+
+  try {
+    const results = [];
+    const seen = new Set();
+    const myUid = loggedInUser?.uid;
+
+    if (/^[a-z0-9._]{3,24}$/.test(query)) {
+      const snap = await get(ref(rtdb, `${PUBLIC_USERS_PATH}/${query}`));
+      if (snap.exists()) {
+        const data = snap.val();
+        if (data?.uid && data.uid !== myUid) {
+          results.push(data);
+          seen.add(data.uid);
+        }
+      }
+    }
+
+    const allSnap = await get(ref(rtdb, PUBLIC_USERS_PATH));
+    allSnap.forEach((child) => {
+      const data = child.val();
+      if (!data?.uid || data.uid === myUid || seen.has(data.uid)) return;
+      const hay = `${data.displayNameLower || ""} ${data.userId || ""} ${data.emailLower || ""}`;
+      if (query.includes("@") ? data.emailLower === query : hay.includes(query)) {
+        results.push(data);
+        seen.add(data.uid);
+      }
+    });
+
+    results.sort((a, b) => (a.displayName || a.userId || "").localeCompare(b.displayName || b.userId || ""));
+    friendSearchResults = results;
+    friendSearchError = "";
+  } catch (err) {
+    console.warn("Friend search failed", err);
+    friendSearchResults = [];
+    friendSearchError = mapSyncError(err);
+  }
+
+  friendSearchLoading = false;
+  if (friendPanelOpen) renderFriends();
+}
+
+function addFriendFromSearch(profile) {
+  if (!profile) return;
+  if (profile.uid && profile.uid === loggedInUser?.uid) {
+    return setFriendMsg("You cannot add yourself.", true);
+  }
+  if (isFriendAlready(profile)) {
     return setFriendMsg("Friend already in list.", true);
   }
-  friends.push({ label: val });
-  input.value = "";
+  friends.push({
+    uid: profile.uid || "",
+    userId: profile.userId || "",
+    displayName: profile.displayName || "",
+    email: profile.emailLower || "",
+    label: friendDisplayLabel(profile)
+  });
   saveFriends();
   renderFriends();
-  setFriendMsg("Friend added.");
+  setFriendMsg(`${profile.displayName || profile.userId || "Friend"} added.`);
 }
 
 function removeFriend(index) {
@@ -1506,6 +1728,7 @@ async function enterApp(user) {
     if (suggested.length >= 3) saveProfileExtra(uid, { userId: suggested });
   }
   loadFriends();
+  void publishMyPublicProfile();
   loadBtDevices();
   loadBtChannelCode();
   loadSelectedWifi();
@@ -2572,6 +2795,7 @@ async function saveProfileName() {
     refreshStatusBar();
     updateMenuAvatar();
     renderSettingsList();
+    await publishMyPublicProfile();
     setProfileMsg("Name updated.");
     cancelNameEdit();
   } catch (err) {
@@ -2906,7 +3130,8 @@ Object.assign(window, {
   resendEmailVerification,
   setupBiometric,
   onBiometricToggle,
-  addFriend,
+  searchFriends,
+  addFriendFromSearch,
   removeFriend,
   refreshWifiList,
   saveProfileName,

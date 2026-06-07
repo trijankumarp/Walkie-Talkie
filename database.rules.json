@@ -18,6 +18,19 @@
         ".read": "auth != null && auth.uid === $uid",
         ".write": "auth != null && auth.uid === $uid"
       }
+    },
+    "publicUsers": {
+      ".read": "auth != null",
+      ".indexOn": ["displayNameLower", "emailLower"],
+      "$handle": {
+        ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid && $handle === newData.child('userId').val()) || (data.exists() && data.child('uid').val() === auth.uid))"
+      }
+    },
+    "publicUsersByUid": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === $uid"
+      }
     }
   }
 }
