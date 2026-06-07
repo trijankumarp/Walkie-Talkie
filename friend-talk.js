@@ -35,6 +35,15 @@ function ftGetRtdb() {
   return window.mosAuth?.getRealtimeDb?.() || null;
 }
 
+function ftFormatError(err) {
+  if (typeof window.formatFriendDbError === "function") return window.formatFriendDbError(err);
+  const msg = String(err?.message || err || "");
+  if (msg.includes("PERMISSION_DENIED")) {
+    return "Firebase rules block Talk. Publish database.rules.json → Rules → Publish.";
+  }
+  return msg || "Could not start friend talk.";
+}
+
 function ftSetStatus(msg, isError) {
   if (typeof ftStatusCb === "function") ftStatusCb(msg, isError);
 }
@@ -201,7 +210,7 @@ async function ftConnect(myUid, friendUid) {
     return true;
   } catch (err) {
     console.warn("Friend talk connect failed", err);
-    ftSetStatus(err.message || "Could not start friend talk.", true);
+    ftSetStatus(ftFormatError(err), true);
     return false;
   }
 }

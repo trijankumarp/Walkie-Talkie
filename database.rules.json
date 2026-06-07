@@ -67,8 +67,10 @@
         "$uidB": {
           ".read": "auth != null && (auth.uid === $uidA || auth.uid === $uidB)",
           "messages": {
+            ".read": "auth != null && (auth.uid === $uidA || auth.uid === $uidB)",
             "$msgId": {
-              ".write": "auth != null && (auth.uid === $uidA || auth.uid === $uidB) && newData.child('fromUid').val() === auth.uid"
+              ".write": "auth != null && (auth.uid === $uidA || auth.uid === $uidB) && newData.child('fromUid').val() === auth.uid",
+              ".read": "auth != null && (auth.uid === $uidA || auth.uid === $uidB)"
             }
           }
         }

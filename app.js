@@ -1229,10 +1229,19 @@ function setFriendMsg(msg, isError) {
   el.className = "profile-msg" + (msg ? (isError ? " err" : " ok") : "");
 }
 
+function isPermissionDenied(err) {
+  const msg = String(err?.message || err || "");
+  return err?.code === "permission-denied" || msg.includes("PERMISSION_DENIED");
+}
+
 function mapFriendRulesError() {
   return (
-    'Friend request blocked by Firebase rules. Open <a href="https://console.firebase.google.com/project/walkietalkie-mos/database/walkietalkie-mos-default-rtdb/rules" target="_blank" rel="noopener">Realtime Database → Rules</a>, paste the full <code>database.rules.json</code> from this project, click <strong>Publish</strong>, then logout &amp; login.'
+    'Talk / Chat blocked — Firebase rules not published. Open <a href="https://console.firebase.google.com/project/walkietalkie-mos/database/walkietalkie-mos-default-rtdb/rules" target="_blank" rel="noopener">Realtime Database → Rules</a>, delete old rules, paste <strong>full</strong> <code>database.rules.json</code> (must include <code>friendChats</code> + <code>friendTalk</code>), click <strong>Publish</strong>, then logout &amp; login on both phones.'
   );
+}
+
+function formatFriendDbError(err) {
+  return isPermissionDenied(err) ? mapFriendRulesError() : mapSyncError(err);
 }
 
 function encodeRtdbKey(value) {
@@ -1981,26 +1990,33 @@ function startFriendChatListener(friendUid) {
   if (!rtdb || !myUid || !friendUid) return;
   stopFriendChatListener();
   friendChatRtdbRef = ref(rtdb, getFriendChatPath(myUid, friendUid));
-  onValue(friendChatRtdbRef, (snap) => {
-    if (!isLoggedIn || loggedInUser?.uid !== myUid) return;
-    const list = [];
-    snap.forEach((child) => {
-      const data = child.val();
-      if (data) list.push({ id: child.key, ...data });
-    });
-    list.sort((a, b) => Number(a.sentAt || 0) - Number(b.sentAt || 0));
-    if (friendChatReady && list.length > lastFriendChatCount) {
-      const newest = list[list.length - 1];
-      if (newest.fromUid !== myUid && activeChatFriend?.uid !== friendUid) {
-        const name = activeChatFriend ? friendDisplayLabel(activeChatFriend) : "Friend";
-        showFriendRequestToast(`${name}: ${(newest.text || "").slice(0, 60)}`);
+  onValue(
+    friendChatRtdbRef,
+    (snap) => {
+      if (!isLoggedIn || loggedInUser?.uid !== myUid) return;
+      const list = [];
+      snap.forEach((child) => {
+        const data = child.val();
+        if (data) list.push({ id: child.key, ...data });
+      });
+      list.sort((a, b) => Number(a.sentAt || 0) - Number(b.sentAt || 0));
+      if (friendChatReady && list.length > lastFriendChatCount) {
+        const newest = list[list.length - 1];
+        if (newest.fromUid !== myUid && activeChatFriend?.uid !== friendUid) {
+          const name = activeChatFriend ? friendDisplayLabel(activeChatFriend) : "Friend";
+          showFriendRequestToast(`${name}: ${(newest.text || "").slice(0, 60)}`);
+        }
       }
+      friendChatReady = true;
+      lastFriendChatCount = list.length;
+      friendChatMessages = list;
+      if (activeChatFriend?.uid === friendUid) renderFriendChatMessages();
+    },
+    (err) => {
+      console.warn("Friend chat listener failed", err);
+      setFriendMsg(formatFriendDbError(err), true);
     }
-    friendChatReady = true;
-    lastFriendChatCount = list.length;
-    friendChatMessages = list;
-    if (activeChatFriend?.uid === friendUid) renderFriendChatMessages();
-  });
+  );
 }
 
 function openFriendChat(index) {
@@ -2045,7 +2061,7 @@ async function sendFriendChat() {
     });
     input.value = "";
   } catch (err) {
-    setFriendMsg(mapSyncError(err), true);
+    setFriendMsg(formatFriendDbError(err), true);
   }
 }
 
@@ -2078,7 +2094,12 @@ async function startFriendTalk(index) {
   activeFriend = f;
   setFriendMsg(`Calling ${friendDisplayLabel(f)}…`);
   window.friendTalk?.setStatusCallback?.((msg, isErr) => {
-    if (msg) setFriendMsg(msg, isErr);
+    if (!msg) return;
+    const text =
+      isErr && (String(msg).includes("PERMISSION_DENIED") || String(msg).includes("permission"))
+        ? mapFriendRulesError()
+        : msg;
+    setFriendMsg(text, isErr);
     refreshStatusBar();
     updatePttHint();
     renderFriends();
@@ -3931,6 +3952,8 @@ async function logout() {
 }
 
 function boot() {
+  window.formatFriendDbError = formatFriendDbError;
+  window.mapFriendRulesError = mapFriendRulesError;
   initTheme();
   initCountrySelect();
   initSignupFields();
