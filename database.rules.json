@@ -81,6 +81,14 @@
           ".write": "auth != null && (auth.uid === $uidA || auth.uid === $uidB)"
         }
       }
+    },
+    "channelInvites": {
+      "$toUid": {
+        ".read": "auth != null && auth.uid === $toUid",
+        "$inviteId": {
+          ".write": "auth != null && (auth.uid === $toUid || (!data.exists() && newData.child('fromUid').val() === auth.uid) || (data.exists() && data.child('fromUid').val() === auth.uid))"
+        }
+      }
     }
   }
 }

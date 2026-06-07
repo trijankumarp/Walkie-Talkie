@@ -35,6 +35,7 @@ const FRIEND_REQUESTS_PATH = "friendRequests";
 const FRIEND_REQUEST_SENT_PATH = "friendRequestSent";
 const USER_FRIENDS_PATH = "userFriends";
 const FRIEND_CHATS_PATH = "friendChats";
+const CHANNEL_INVITES_PATH = "channelInvites";
 const RTDB_KEY_DOT = ",";
 const CHANNEL_STALE_MS = 5 * 60 * 1000;
 const THEME_KEY = "walkie_theme_v1";
@@ -144,6 +145,10 @@ let userChannelsRtdbRef = null;
 let channelShareOk = false;
 let channelsLoading = false;
 let channelsCloudError = "";
+let channelInvites = [];
+let channelInvitesRtdbRef = null;
+let channelInvitesReady = false;
+let lastChannelInviteCount = 0;
 
 function generateChannelId() {
   return `CH-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -2416,6 +2421,7 @@ async function enterApp(user) {
   await loadChannelsFromCloud();
   startUserChannelsListener(uid);
   startFriendListeners(uid);
+  startChannelInviteListener(uid);
   refreshStatusBar();
   renderChannels();
   updatePttHint();
@@ -3003,6 +3009,179 @@ function renderNearbyChannelItem(container, ch) {
   container.appendChild(div);
 }
 
+function setChannelMsg(msg, isError) {
+  const el = document.getElementById("channelMsg");
+  if (!el) return;
+  if (msg && /<[a-z][\s\S]*>/i.test(msg)) {
+    el.innerHTML = msg;
+  } else {
+    el.textContent = msg || "";
+  }
+  el.className = "profile-msg" + (msg ? (isError ? " err" : " ok") : "");
+}
+
+function stopChannelInviteListener() {
+  if (channelInvitesRtdbRef) {
+    off(channelInvitesRtdbRef);
+    channelInvitesRtdbRef = null;
+  }
+  channelInvites = [];
+  channelInvitesReady = false;
+  lastChannelInviteCount = 0;
+}
+
+function startChannelInviteListener(uid) {
+  const rtdb = getRealtimeDb();
+  if (!rtdb || !uid) return;
+  stopChannelInviteListener();
+  channelInvitesRtdbRef = ref(rtdb, `${CHANNEL_INVITES_PATH}/${uid}`);
+  onValue(channelInvitesRtdbRef, (snap) => {
+    if (!isLoggedIn || loggedInUser?.uid !== uid) return;
+    const list = [];
+    snap.forEach((child) => {
+      const data = child.val();
+      if (data) list.push({ id: child.key, ...data });
+    });
+    list.sort((a, b) => Number(b.invitedAt || 0) - Number(a.invitedAt || 0));
+    if (channelInvitesReady && list.length > lastChannelInviteCount) {
+      const newest = list[0];
+      const who = newest?.fromName || "A friend";
+      const chName = newest?.channelName || "a channel";
+      showFriendRequestToast(`${who} invited you to ${chName}`);
+    }
+    channelInvitesReady = true;
+    lastChannelInviteCount = list.length;
+    channelInvites = list;
+    if (channelPanelOpen) renderChannels();
+  });
+}
+
+async function inviteFriendToChannel(friend) {
+  const ch = getActiveChannel();
+  const myUid = loggedInUser?.uid;
+  if (!ch) return setChannelMsg("Select a channel first (tap it in the list).", true);
+  if (!friend?.uid) return setChannelMsg("Friend not found.", true);
+  if (friend.uid === myUid) return setChannelMsg("You are already on this channel.", true);
+  const rtdb = getRealtimeDb();
+  if (!rtdb) return setChannelMsg("Internet + Firebase required to invite.", true);
+
+  await publishChannelRecord(ch);
+  const inviteId = `${myUid}_${ch.channelId}`;
+  try {
+    await set(ref(rtdb, `${CHANNEL_INVITES_PATH}/${friend.uid}/${inviteId}`), {
+      fromUid: myUid,
+      fromName: loggedInUser?.name || "Friend",
+      channelId: ch.channelId,
+      channelName: ch.name,
+      frequency: ch.frequency,
+      invitedAt: Date.now()
+    });
+    setChannelMsg(`Invite sent to ${friendDisplayLabel(friend)}.`);
+    renderChannels();
+  } catch (err) {
+    console.warn("Channel invite failed", err);
+    setChannelMsg(mapSyncError(err), true);
+  }
+}
+
+async function joinChannelFromInvite(invite) {
+  if (!invite?.channelId) return;
+  const existing = getLocalChannelByPublicId(invite.channelId);
+  if (existing) {
+    selectLocalChannel(existing.id);
+  } else {
+    const newId = channels.length ? Math.max(...channels.map((c) => c.id)) + 1 : 1;
+    const record = normalizeChannelRecord({
+      id: newId,
+      name: invite.channelName || "Channel",
+      channelId: invite.channelId,
+      frequency: invite.frequency || generateChannelFrequency()
+    });
+    channels.push(record);
+    currentChannel = newId;
+    await saveChannelsToCloud();
+    await saveCurrentChannelToCloud();
+    renderChannels();
+    updatePttHint();
+    publishActiveChannelToWifi();
+    refreshNearbyChannels();
+    closeMenu();
+  }
+  await declineChannelInvite(invite.id);
+  setChannelMsg(`Joined ${invite.channelName || "channel"}.`);
+}
+
+async function declineChannelInvite(inviteId) {
+  const rtdb = getRealtimeDb();
+  const myUid = loggedInUser?.uid;
+  if (!rtdb || !myUid || !inviteId) return;
+  try {
+    await set(ref(rtdb, `${CHANNEL_INVITES_PATH}/${myUid}/${inviteId}`), null);
+  } catch (err) {
+    console.warn("Decline channel invite failed", err);
+  }
+}
+
+function renderChannelInviteSection() {
+  const container = document.getElementById("channelInviteList");
+  if (!container) return;
+  container.innerHTML = "";
+  if (!channelInvites.length) return;
+
+  appendChannelSectionLabel(container, `Channel invites (${channelInvites.length})`);
+  channelInvites.forEach((invite) => {
+    const div = document.createElement("div");
+    div.className = "channel-item channel-item-nearby";
+    const who = invite.fromName || "Friend";
+    div.innerHTML = `
+      <div class="channel-info">
+        <span class="channel-name">${escapeHtml(invite.channelName || "Channel")}</span>
+        <span class="channel-meta">${escapeHtml(who)} · ${escapeHtml(invite.channelId || "")}</span>
+      </div>
+      <div class="friend-req-actions">
+        <button type="button" class="channel-join-btn" data-join>Join</button>
+        <button type="button" class="delete-btn" data-decline title="Dismiss">✕</button>
+      </div>
+    `;
+    div.querySelector("[data-join]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void joinChannelFromInvite(invite);
+    });
+    div.querySelector("[data-decline]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void declineChannelInvite(invite.id);
+    });
+    div.addEventListener("click", () => void joinChannelFromInvite(invite));
+    container.appendChild(div);
+  });
+}
+
+function renderChannelFriendAddSection() {
+  const container = document.getElementById("channelFriendAdd");
+  if (!container) return;
+  container.innerHTML = "";
+  const ch = getActiveChannel();
+  if (!ch || !friends.length) return;
+
+  appendChannelSectionLabel(container, `Add friends to ${ch.name}`);
+  friends.forEach((f) => {
+    if (f.uid === loggedInUser?.uid) return;
+    const div = document.createElement("div");
+    div.className = "channel-item";
+    div.innerHTML = `
+      <div class="channel-info">
+        <span class="channel-name">${escapeHtml(friendDisplayLabel(f))}</span>
+      </div>
+      <button type="button" class="channel-join-btn">Invite</button>
+    `;
+    div.querySelector(".channel-join-btn")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void inviteFriendToChannel(f);
+    });
+    container.appendChild(div);
+  });
+}
+
 function renderChannels() {
   const container = document.getElementById("channelList");
   if (!container) return;
@@ -3080,6 +3259,8 @@ function renderChannels() {
     }
   }
 
+  renderChannelInviteSection();
+  renderChannelFriendAddSection();
   updatePttHint();
 }
 
@@ -3717,6 +3898,7 @@ async function logout() {
   currentChannel = null;
   stopChannelWifiSync();
   stopFriendListeners();
+  stopChannelInviteListener();
   stopFriendChatListener();
   closeFriendChat();
   window.friendTalk?.cleanup?.();
@@ -3861,7 +4043,10 @@ Object.assign(window, {
   stopTalk,
   logout,
   addNewChannel,
-  deleteChannel
+  deleteChannel,
+  inviteFriendToChannel,
+  joinChannelFromInvite,
+  declineChannelInvite
 });
 
 if (window.mosAuth) boot();
